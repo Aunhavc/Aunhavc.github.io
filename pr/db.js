@@ -74,17 +74,20 @@ export async function listRequests({ status = 'all', q = '' } = {}) {
 }
 
 export async function getRequest(id) {
-  const [{ data: head, error: e1 }, { data: items, error: e2 }, { data: logs, error: e3 }] =
-    await Promise.all([
-      supabase.from('pr_request').select(HEADER_COLS).eq('id', id).maybeSingle(),
-      supabase.from('pr_item').select('*').eq('request_id', id).order('line_no'),
-      supabase.from('pr_log').select('*').eq('request_id', id).order('at')
-    ]);
-  if (e1) throw e1;
-  if (e2) throw e2;
-  if (e3) throw e3;
-  if (!head) throw new Error('ไม่พบใบขอจัดซื้อนี้ หรือคุณไม่มีสิทธิ์เปิดดู');
-  return { head, items: items ?? [], logs: logs ?? [] };
+  const [head, items, assets, logs] = await Promise.all([
+    supabase.from('pr_request').select(HEADER_COLS).eq('id', id).maybeSingle(),
+    supabase.from('pr_item').select('*').eq('request_id', id).order('line_no'),
+    supabase.from('pr_asset').select('*').eq('request_id', id).order('line_no'),
+    supabase.from('pr_log').select('*').eq('request_id', id).order('at')
+  ]);
+  for (const r of [head, items, assets, logs]) if (r.error) throw r.error;
+  if (!head.data) throw new Error('ไม่พบใบขอจัดซื้อนี้ หรือคุณไม่มีสิทธิ์เปิดดู');
+  return {
+    head:   head.data,
+    items:  items.data  ?? [],
+    assets: assets.data ?? [],
+    logs:   logs.data   ?? []
+  };
 }
 
 export async function createRequest(patch) {
@@ -119,7 +122,7 @@ export async function saveItems(requestId, rows) {
       request_id: requestId,
       line_no: i + 1,
       description: r.description || '',
-      item_type: r.item_type || '',
+      item_type: r.item_type || 'expense',
       qty: Number(r.qty) || 0,
       unit_price: Number(r.unit_price) || 0,
       note: r.note || ''
@@ -141,6 +144,8 @@ const rpc = async (fn, args) => {
 };
 
 export const submitRequest = id            => rpc('pr_submit',      { p_id: id });
+/** บันทึกตารางส่วนงานสินทรัพย์ทั้งชุด — ฝ่ายสินทรัพย์/ฝ่ายบัญชีเท่านั้น */
+export const saveAssets    = (id, rows)    => rpc('pr_save_assets', { p_id: id, p_rows: rows });
 export const decideRequest = (id, d, note) => rpc('pr_decide',      { p_id: id, p_decision: d, p_note: note || '' });
 export const itOpinion     = (id, o, note) => rpc('pr_it_opinion',  { p_id: id, p_opinion: o, p_note: note || '' });
 export const setSapRef     = (id, ref)     => rpc('pr_set_sap_ref', { p_id: id, p_ref: ref || '' });

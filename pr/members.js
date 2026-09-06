@@ -41,7 +41,7 @@ root.innerHTML = `
   </div>`;
 
 function rowHtml(m) {
-  const roles = ['staff','it','approver','admin'];
+  const roles = ['staff','it','asset','account','approver','admin'];
   return `<tr data-uid="${esc(m.user_id)}">
     <td><input data-k="full_name"   type="text" value="${esc(m.full_name)}"   style="min-width:160px"></td>
     <td><input data-k="position"    type="text" value="${esc(m.position)}"    style="min-width:150px"></td>

@@ -10,7 +10,7 @@
 import {
   configured, requireSession, myMember, getRequest,
   createRequest, updateRequest, deleteRequest, saveItems,
-  submitRequest, decideRequest, itOpinion, setSapRef
+  submitRequest, decideRequest, itOpinion, setSapRef, saveAssets
 } from './db.js';
 import { FORM } from './form-config.js';
 import { topbar, note, friendlyError } from './ui.js';
@@ -28,11 +28,11 @@ bar.innerHTML = topbar(me, 'edit.html');
 const id = new URLSearchParams(location.search).get('id');
 
 /* สถานะในหน้า — head/items ถูกเขียนทับทุกครั้งที่โหลดใหม่จากฐานข้อมูล */
-let head, items, logs;
+let head, items, assets, logs;
 
 if (id) {
   try {
-    ({ head, items, logs } = await getRequest(id));
+    ({ head, items, assets, logs } = await getRequest(id));
   } catch (e) {
     root.innerHTML = `<div class="wrap">${note('bad', esc(friendlyError(e)))}</div>`;
     throw e;
@@ -45,7 +45,6 @@ if (id) {
     department: me.department, dept_code: me.dept_code, cost_center: me.cost_center,
     vendor_suggest: '', reason: '',
     doc_date: new Date().toISOString().slice(0, 10),
-    asset_type: 'expense',
     pay_no_supplier: false, pay_normal_cycle: false, refund_transfer: false, refund_bank: '',
     clear_advance: false, at_branch: false, install_wait: false, install_date: null,
     receiver_name: '', pay_by_period: false, period_no: '', clear_doc_no: '',
@@ -53,6 +52,7 @@ if (id) {
     it_opinion: null, it_note: '', it_name: '', sap_ref: '', decision_note: '', decided_name: ''
   };
   items = [];
+  assets = [];
   logs = [];
 }
 
@@ -62,6 +62,9 @@ render();
 const canEdit    = () => head.requester_id ? (head.requester_id === me.user_id && ['draft','rejected'].includes(head.status)) : true;
 const canDecide  = () => head.status === 'submitted' && ['approver','admin'].includes(me.role);
 const canItSay   = () => ['submitted','approved'].includes(head.status) && ['it','admin'].includes(me.role);
+/* ฝ่ายสินทรัพย์กับฝ่ายบัญชีกรอกตารางหน้า 2 ได้ หลังใบถูกส่งอนุมัติแล้ว */
+const canEditAssets = () => ['submitted','approved'].includes(head.status)
+                         && ['asset','account','admin'].includes(me.role);
 
 /* ---------------- วาดหน้าจอ ---------------- */
 function render() {
@@ -105,15 +108,6 @@ function render() {
         <div style="grid-column:span 2"><label class="f">ชื่อผู้ขายที่แนะนำ (ถ้ามี)</label><input id="vendor_suggest" type="text" value="${esc(head.vendor_suggest)}"${dis}></div>
         <div style="grid-column:1/-1"><label class="f">เหตุผลในการขอซื้อ</label><input id="reason" type="text" value="${esc(head.reason)}"${dis}></div>
       </div>
-
-      <fieldset style="margin-top:14px">
-        <legend>ประเภทรายการ</legend>
-        <div class="grid" style="gap:8px">
-          ${FORM.assetTypes.map(t => `
-            <label class="check"><input type="radio" name="asset_type" value="${t.value}"
-              ${head.asset_type === t.value ? 'checked' : ''}${dis}> ${esc(t.label)}</label>`).join('')}
-        </div>
-      </fieldset>
     </div>
 
     <!-- ---------- รายการ ---------- -->
@@ -124,7 +118,7 @@ function render() {
           <thead><tr>
             <th style="width:34px"></th>
             <th style="min-width:220px">ชื่อและรายละเอียดสิ่งที่ต้องการ</th>
-            <th style="width:120px">ประเภท</th>
+            <th style="width:150px">ประเภท</th>
             <th style="width:80px">จำนวน</th>
             <th style="width:110px">ราคาต่อหน่วย</th>
             <th style="width:110px;text-align:end">จำนวนเงิน</th>
@@ -207,6 +201,41 @@ function render() {
         </div>` : ''}
     </div>` : ''}
 
+    <!-- ---------- ส่วนงานสินทรัพย์ (หน้า 2 ของใบ) ---------- -->
+    ${(assets.length || canEditAssets()) ? `
+    <div class="card">
+      <h2>ส่วนงานสินทรัพย์</h2>
+      <p class="muted" style="margin:-6px 0 12px">
+        ฝ่ายสินทรัพย์ / ฝ่ายบัญชี กรอกหลังใบได้รับอนุมัติ —
+        ชุดใหญ่/ชุดเล็กระบบแบ่งให้เองจากมูลค่าต่อหน่วย (ตั้งแต่ ${money(FORM.assetSetThreshold)} บาทขึ้นไป = ชุดใหญ่)
+      </p>
+      <div class="scroll">
+        <table class="lines" id="assets">
+          <thead><tr>
+            <th style="width:34px"></th>
+            <th style="width:150px">รหัสสินทรัพย์</th>
+            <th style="min-width:220px">ชื่อสินทรัพย์</th>
+            <th style="width:80px">จำนวน</th>
+            <th style="width:120px">มูลค่า/หน่วย</th>
+            <th style="width:110px;text-align:end">มูลค่ารวม</th>
+            <th style="width:70px">ชุด</th>
+          </tr></thead>
+          <tbody>${assetRowsHtml()}</tbody>
+        </table>
+      </div>
+      ${canEditAssets() ? `
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <button class="btn ghost sm" id="addAsset">+ เพิ่มบรรทัด</button>
+          <span style="flex:1"></span>
+          <div class="totals" id="assetTotals" style="margin:0"></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn" id="saveAssets">บันทึกส่วนงานสินทรัพย์</button>
+        </div>` : `<div class="totals" id="assetTotals" style="margin-top:12px"></div>`}
+      ${assets.length && assets[0].updated_name ? `<p class="muted" style="margin:10px 0 0">
+        แก้ไขล่าสุดโดย ${esc(assets[0].updated_name)} เมื่อ ${esc(stampTH(assets[0].updated_at))}</p>` : ''}
+    </div>` : ''}
+
     <!-- ---------- เลขอ้างอิง SAP ---------- -->
     ${head.status === 'approved' && ['approver','admin'].includes(me.role) ? `
     <div class="card">
@@ -238,18 +267,42 @@ function render() {
 
 const ACTION = {
   submitted: 'ส่งอนุมัติ', approved: 'อนุมัติ', rejected: 'ตีกลับ',
-  it_agree: 'ฝ่าย IT เห็นชอบ', it_disagree: 'ฝ่าย IT ไม่เห็นชอบ', sap_ref: 'บันทึกเลข SAP'
+  it_agree: 'ฝ่าย IT เห็นชอบ', it_disagree: 'ฝ่าย IT ไม่เห็นชอบ',
+  assets: 'บันทึกส่วนงานสินทรัพย์', sap_ref: 'บันทึกเลข SAP'
 };
 
 function chk(key, label, dis) {
   return `<label class="check"><input type="checkbox" id="${key}"${head[key] ? ' checked' : ''}${dis}> ${esc(label)}</label>`;
 }
 
+/** แถวในตารางส่วนงานสินทรัพย์ — อ่านอย่างเดียวเมื่อไม่มีสิทธิ์กรอก */
+function assetRow(a, ro) {
+  const d = ro ? ' disabled' : '';
+  return `<tr>
+    <td class="muted ctr" style="padding-top:13px"></td>
+    <td><input class="as" data-k="asset_code" type="text" value="${esc(a.asset_code || '')}"${d}></td>
+    <td><input class="as" data-k="asset_name" type="text" value="${esc(a.asset_name || '')}"${d}></td>
+    <td><input class="as" data-k="qty"        type="number" step="0.001" min="0" value="${a.qty ?? ''}"${d}></td>
+    <td><input class="as" data-k="unit_value" type="number" step="0.01"  min="0" value="${a.unit_value ?? ''}"${d}></td>
+    <td class="amt" data-aamt></td>
+    <td class="muted" data-aset style="padding-top:13px;font-size:13px"></td>
+  </tr>`;
+}
+
+function assetRowsHtml() {
+  const ro = !canEditAssets();
+  const rows = [...assets];
+  // เว้นบรรทัดว่างให้พิมพ์ต่อได้ เฉพาะตอนที่มีสิทธิ์กรอก
+  if (!ro) while (rows.length < 3) rows.push({ asset_code:'', asset_name:'', qty:'', unit_value:'' });
+  return rows.map(a => assetRow(a, ro)).join('');
+}
+
 function lineRow(r) {
   return `<tr>
     <td class="muted ctr" style="padding-top:13px"></td>
     <td><input class="ln" data-k="description" type="text" value="${esc(r.description || '')}"></td>
-    <td><input class="ln" data-k="item_type"   type="text" value="${esc(r.item_type || '')}"></td>
+    <td><select class="ln" data-k="item_type">${FORM.assetTypes.map(t =>
+        `<option value="${t.value}"${(r.item_type || 'expense') === t.value ? ' selected' : ''}>${esc(t.labelShort)}</option>`).join('')}</select></td>
     <td><input class="ln" data-k="qty"         type="number" step="0.001" min="0" value="${r.qty ?? ''}"></td>
     <td><input class="ln" data-k="unit_price"  type="number" step="0.01"  min="0" value="${r.unit_price ?? ''}"></td>
     <td class="amt" data-amt>0.00</td>
@@ -279,7 +332,6 @@ function readHead() {
     vendor_suggest: val('vendor_suggest'),
     reason:         val('reason'),
     doc_date:       val('doc_date') || null,
-    asset_type:     document.querySelector('input[name=asset_type]:checked')?.value || 'expense',
     pay_no_supplier: chkVal('pay_no_supplier'),
     pay_normal_cycle: chkVal('pay_normal_cycle'),
     refund_transfer: chkVal('refund_transfer'),
@@ -322,11 +374,47 @@ function recalc() {
     <span class="k grand">ยอดรวม</span><span class="v grand">${money(grand)}</span>`;
   document.getElementById('bahtline').textContent = `(${bahtText(grand)})`;
 
+  recalcAssets();
+
   // เงื่อนไขข้อ 3 บนฟอร์ม — เกินวงเงินผู้จัดการฝ่าย ต้องขึ้นถึงประธานเจ้าหน้าที่สายงาน
   document.getElementById('limitWarn').innerHTML = grand > FORM.managerLimit
     ? note('warn', `ยอดรวมเกิน ${money(FORM.managerLimit)} บาท — ตามเงื่อนไขข้อ 3 ของฟอร์ม
         ต้องได้รับอนุมัติจาก<b>ประธานเจ้าหน้าที่สายงานของฝ่าย</b> ไม่ใช่ผู้จัดการฝ่าย`)
     : '';
+}
+
+/** ยอดรวมตารางสินทรัพย์ + ป้ายชุดใหญ่/ชุดเล็กต่อบรรทัด (คิดจากมูลค่าต่อหน่วย) */
+function recalcAssets() {
+  const box = document.getElementById('assetTotals');
+  if (!box) return;
+
+  let qtyAll = 0, valAll = 0, big = 0, small = 0;
+  document.querySelectorAll('#assets tbody tr').forEach((tr, i) => {
+    const q = Number(tr.querySelector('[data-k=qty]')?.value) || 0;
+    const u = Number(tr.querySelector('[data-k=unit_value]')?.value) || 0;
+    const a = Math.round(q * u * 100) / 100;
+    const named = tr.querySelector('[data-k=asset_name]')?.value.trim()
+               || tr.querySelector('[data-k=asset_code]')?.value.trim();
+
+    tr.querySelector('[data-aamt]').textContent = a ? money(a) : '';
+    tr.cells[0].textContent = named ? (i + 1) : '';
+
+    const setCell = tr.querySelector('[data-aset]');
+    if (named && u) {
+      const isBig = u >= FORM.assetSetThreshold;
+      setCell.textContent = FORM.assetSetLabel[isBig ? 'big' : 'small'];
+      if (isBig) big += a; else small += a;
+    } else {
+      setCell.textContent = '';
+    }
+    if (named) { qtyAll += q; valAll += a; }
+  });
+
+  box.innerHTML = `
+    <span class="k">ชุดใหญ่ (ตั้งแต่ ${money(FORM.assetSetThreshold)})</span><span class="v">${money(big)}</span>
+    <span class="k">ชุดเล็ก (ต่ำกว่า ${money(FORM.assetSetThreshold)})</span><span class="v">${money(small)}</span>
+    <span class="k">จำนวนสินทรัพย์รวม</span><span class="v">${qtyAll || ''}</span>
+    <span class="k grand">มูลค่าสินทรัพย์รวม</span><span class="v grand">${money(valAll)}</span>`;
 }
 
 /* ---------------- ผูก event ---------------- */
@@ -335,9 +423,32 @@ function wire() {
   const show = (k, t) => { msg.innerHTML = note(k, esc(t)); msg.scrollIntoView({ block: 'nearest' }); };
   const busy = on => document.querySelectorAll('.card button').forEach(b => b.disabled = on);
 
-  document.getElementById('lines')?.addEventListener('input', recalc);
+  document.getElementById('lines')?.addEventListener('input',  recalc);
+  document.getElementById('lines')?.addEventListener('change', recalc);
   document.getElementById('vat_rate')?.addEventListener('input', recalc);
   document.getElementById('wht_rate')?.addEventListener('change', recalc);
+
+  document.getElementById('assets')?.addEventListener('input', recalcAssets);
+
+  document.getElementById('addAsset')?.addEventListener('click', () => {
+    document.querySelector('#assets tbody').insertAdjacentHTML('beforeend',
+      assetRow({ asset_code:'', asset_name:'', qty:'', unit_value:'' }, false));
+  });
+
+  document.getElementById('saveAssets')?.addEventListener('click', async () => {
+    busy(true);
+    try {
+      const rows = [...document.querySelectorAll('#assets tbody tr')].map(tr => {
+        const o = {};
+        tr.querySelectorAll('.as').forEach(i => o[i.dataset.k] = i.value);
+        return o;
+      });
+      await saveAssets(head.id, rows);
+      ({ head, items, assets, logs } = await getRequest(head.id));
+      render();
+      document.getElementById('msg').innerHTML = note('ok', 'บันทึกส่วนงานสินทรัพย์แล้ว');
+    } catch (e) { show('bad', friendlyError(e)); busy(false); }
+  });
 
   document.getElementById('addLine')?.addEventListener('click', () => {
     document.querySelector('#lines tbody').insertAdjacentHTML('beforeend',
@@ -355,7 +466,7 @@ function wire() {
       await updateRequest(head.id, patch);
     }
     await saveItems(head.id, readLines());
-    ({ head, items, logs } = await getRequest(head.id));
+    ({ head, items, assets, logs } = await getRequest(head.id));
   }
 
   document.getElementById('save')?.addEventListener('click', async () => {
@@ -370,7 +481,7 @@ function wire() {
     try {
       await persist();
       await submitRequest(head.id);
-      ({ head, items, logs } = await getRequest(head.id));
+      ({ head, items, assets, logs } = await getRequest(head.id));
       render();
       document.getElementById('msg').innerHTML = note('ok', `ส่งอนุมัติแล้ว เลขที่เอกสาร <b>${esc(head.doc_no)}</b>`);
     } catch (e) { show('bad', friendlyError(e)); busy(false); }
@@ -388,7 +499,7 @@ function wire() {
     busy(true);
     try {
       await decideRequest(head.id, d, noteTxt);
-      ({ head, items, logs } = await getRequest(head.id));
+      ({ head, items, assets, logs } = await getRequest(head.id));
       render();
     } catch (e) { show('bad', friendlyError(e)); busy(false); }
   };
@@ -399,7 +510,7 @@ function wire() {
     busy(true);
     try {
       await itOpinion(head.id, o, val('it_note'));
-      ({ head, items, logs } = await getRequest(head.id));
+      ({ head, items, assets, logs } = await getRequest(head.id));
       render();
     } catch (e) { show('bad', friendlyError(e)); busy(false); }
   };
@@ -410,7 +521,7 @@ function wire() {
     busy(true);
     try {
       await setSapRef(head.id, val('sap_ref'));
-      ({ head, items, logs } = await getRequest(head.id));
+      ({ head, items, assets, logs } = await getRequest(head.id));
       render();
     } catch (e) { show('bad', friendlyError(e)); busy(false); }
   });

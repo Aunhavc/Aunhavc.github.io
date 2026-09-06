@@ -19,7 +19,7 @@ if (!id) { out.innerHTML = '<p style="padding:24px">ไม่ได้ระบ�
 document.getElementById('backLink').href = `edit.html?id=${encodeURIComponent(id)}`;
 document.getElementById('printBtn').addEventListener('click', () => window.print());
 
-const { head, items } = await getRequest(id);
+const { head, items, assets } = await getRequest(id);
 document.getElementById('barDoc').textContent = head.doc_no || '(ยังไม่ออกเลขเอกสาร)';
 
 /* เตือนเมื่อพิมพ์ใบที่ยังไม่ผ่านสถานะอนุมัติ — กันเอาใบร่างไปให้ผู้บริหารเซ็น */
@@ -30,4 +30,4 @@ if (head.status !== 'approved') {
     เพื่อให้ประวัติในระบบตรงกับกระดาษที่เซ็น</div>`;
 }
 
-out.innerHTML = sheetsHtml(head, items, ORG_NAME);
+out.innerHTML = sheetsHtml(head, items, assets, ORG_NAME);

@@ -80,5 +80,6 @@ export const STATUS = {
 };
 
 export const ROLE_LABEL = {
-  staff: 'ผู้ขอซื้อ', it: 'ฝ่าย IT', approver: 'ผู้อนุมัติ', admin: 'ผู้ดูแลระบบ'
+  staff: 'ผู้ขอซื้อ', it: 'ฝ่าย IT', asset: 'ฝ่ายสินทรัพย์',
+  account: 'ฝ่ายบัญชี', approver: 'ผู้อนุมัติ', admin: 'ผู้ดูแลระบบ'
 };

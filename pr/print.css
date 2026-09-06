@@ -63,6 +63,7 @@ th,td{ border:var(--thin); padding:.6mm 1.2mm; vertical-align:top; word-wrap:bre
 thead th{ text-align:center; font-weight:700; vertical-align:middle; white-space:nowrap }
 .items{ margin-top:2mm }
 .items tbody td{ height:11mm }
+.assets tbody td{ height:8mm }
 .num{ text-align:right; font-variant-numeric:tabular-nums }
 .ctr{ text-align:center }
 

@@ -34,27 +34,49 @@ function signBox(s) {
 /**
  * คืน HTML ของกระดาษ 2 แผ่น
  * @param {object} h      หัวใบขอจัดซื้อ (แถวจาก pr_request)
- * @param {Array}  items  รายการ (แถวจาก pr_item เรียงตาม line_no)
+ * @param {Array}  items  รายการที่ขอซื้อ (แถวจาก pr_item เรียงตาม line_no)
+ * @param {Array}  assets ส่วนงานสินทรัพย์ (แถวจาก pr_asset เรียงตาม line_no)
  * @param {string} orgName ชื่อบริษัทที่พิมพ์ใต้หัวเอกสาร
  */
-export function sheetsHtml(h, items, orgName = '') {
+export function sheetsHtml(h, items, assets = [], orgName = '') {
   /* ---------- หน้า 1 ---------- */
   const rows = [...items];
   while (rows.length < FORM.minItemRows) rows.push(null);
+
+  /* ช่อง "ประเภทรายการ" บนหัวเอกสารไม่ได้ให้คนกาเองแล้ว
+     แต่สรุปอัตโนมัติจากประเภทของแต่ละบรรทัด — ใบเดียวมีได้หลายประเภท จึงกาได้หลายช่อง */
+  const typesUsed = new Set(items.map(r => r.item_type).filter(Boolean));
+
+  const typeLabel = v => FORM.assetTypes.find(t => t.value === v)?.labelPrint || '';
 
   const itemRows = rows.map((r, i) => `
     <tr>
       <td class="ctr">${r ? i + 1 : ''}</td>
       <td>${esc(r?.description || '')}</td>
-      <td>${esc(r?.item_type || '')}</td>
+      <td class="ctr">${esc(typeLabel(r?.item_type))}</td>
       <td class="ctr">${qtyFmt(r?.qty)}</td>
       <td class="num">${money(r?.unit_price, true)}</td>
       <td class="num">${money(r?.amount, true)}</td>
       <td>${esc(r?.note || '')}</td>
     </tr>`).join('');
 
-  const assetRows = Array.from({ length: FORM.assetRows }, (_, i) => `
-    <tr><td class="ctr">${i + 1}</td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
+  /* ส่วนงานสินทรัพย์ — ที่ฝ่ายสินทรัพย์/บัญชีกรอกไว้ในระบบ
+     เว้นบรรทัดว่างต่อท้ายให้ครบ FORM.assetRows เผื่อเขียนเพิ่มด้วยมือหน้างาน */
+  const aRows = [...assets];
+  while (aRows.length < FORM.assetRows) aRows.push(null);
+
+  const assetRows = aRows.map((a, i) => `
+    <tr>
+      <td class="ctr">${a ? i + 1 : ''}</td>
+      <td>${esc(a?.asset_code || '')}</td>
+      <td>${esc(a?.asset_name || '')}</td>
+      <td class="ctr">${qtyFmt(a?.qty)}</td>
+      <td class="num">${money(a?.unit_value, true)}</td>
+      <td class="num">${money(a?.amount, true)}</td>
+    </tr>`).join('');
+
+  const assetQty   = assets.reduce((n, a) => n + (Number(a.qty) || 0), 0);
+  const assetValue = assets.reduce((n, a) => n + (Number(a.amount) || 0), 0);
 
   const sign1 = FORM.signRow1.map(s =>
     s.auto === 'requester'
@@ -80,7 +102,7 @@ export function sheetsHtml(h, items, orgName = '') {
       <div>
         <div class="docno"><span>เลขที่เอกสาร</span><span class="v">${esc(h.doc_no || '')}</span></div>
         <div style="margin-top:1.5mm;display:grid;gap:.6mm">
-          ${FORM.assetTypes.map(t => `<div>${cb(h.asset_type === t.value, t.label)}</div>`).join('')}
+          ${FORM.assetTypes.map(t => `<div>${cb(typesUsed.has(t.value), t.label)}</div>`).join('')}
         </div>
       </div>
     </div>
@@ -162,7 +184,7 @@ export function sheetsHtml(h, items, orgName = '') {
       (สินทรัพย์ชุดใหญ่ มูลค่า 5,000 บาทขึ้นไป / สินทรัพย์ชุดเล็ก มูลค่าต่ำกว่า 5,000 บาท)
     </div>
 
-    <table style="margin-top:2mm">
+    <table class="assets" style="margin-top:2mm">
       <colgroup>
         <col style="width:6.8%"><col style="width:16.1%"><col style="width:46%">
         <col style="width:6.8%"><col style="width:12.9%"><col style="width:11.4%">
@@ -173,12 +195,12 @@ export function sheetsHtml(h, items, orgName = '') {
           <th>จำนวน<br>สินทรัพย์</th><th>มูลค่าสินทรัพย์<br>/ หน่วย</th><th>มูลค่า<br>สินทรัพย์</th>
         </tr>
       </thead>
-      <tbody style="height:8mm">${assetRows}</tbody>
+      <tbody>${assetRows}</tbody>
       <tfoot>
         <tr>
           <td colspan="2" style="border:0"></td>
-          <th style="text-align:end">จำนวนสินทรัพย์รวม</th><td></td>
-          <th style="text-align:end">มูลค่าสินทรัพย์รวม</th><td></td>
+          <th style="text-align:end">จำนวนสินทรัพย์รวม</th><td class="ctr">${qtyFmt(assetQty)}</td>
+          <th style="text-align:end">มูลค่าสินทรัพย์รวม</th><td class="num">${money(assetValue, true)}</td>
         </tr>
       </tfoot>
     </table>

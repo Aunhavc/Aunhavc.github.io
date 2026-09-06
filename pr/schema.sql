@@ -16,6 +16,8 @@
 -- 1. ผู้ใช้งาน + สิทธิ์
 --    staff    = สร้าง/แก้ใบของตัวเอง
 --    it       = ให้ความเห็นฝ่าย IT ได้ทุกใบ (ตามเงื่อนไขข้อ 2 บนฟอร์ม)
+--    asset    = ฝ่ายสินทรัพย์ — กรอกตารางส่วนงานสินทรัพย์ (หน้า 2 ของใบ)
+--    account  = ฝ่ายบัญชี   — กรอกตารางส่วนงานสินทรัพย์ได้เช่นกัน
 --    approver = อนุมัติ/ตีกลับได้ทุกใบ
 --    admin    = ทุกอย่าง + จัดการผู้ใช้
 -- ---------------------------------------------------------------
@@ -27,10 +29,15 @@ create table if not exists pr_member (
   dept_code   text not null default 'GEN',         -- ตัวย่อใช้ในเลขที่เอกสาร เช่น IT
   cost_center text not null default '',            -- Division Cost Center ตั้งต้น
   role        text not null default 'staff'
-              check (role in ('staff','it','approver','admin')),
+              check (role in ('staff','it','asset','account','approver','admin')),
   active      boolean not null default true,
   created_at  timestamptz not null default now()
 );
+
+-- ถ้าเคยติดตั้งด้วยชุดสิทธิ์เดิม (ไม่มี asset/account) ให้ขยาย constraint ให้
+alter table pr_member drop constraint if exists pr_member_role_check;
+alter table pr_member add  constraint pr_member_role_check
+  check (role in ('staff','it','asset','account','approver','admin'));
 
 -- ผู้ใช้ใหม่ได้แถวใน pr_member อัตโนมัติ (สิทธิ์ staff) แล้วแอดมินค่อยตั้งฝ่าย/สิทธิ์
 create or replace function pr_on_new_user()
@@ -83,10 +90,6 @@ create table if not exists pr_request (
   reason         text not null default '',    -- เหตุผลในการขอซื้อ
   doc_date       date not null default (now() at time zone 'Asia/Bangkok')::date,
 
-  -- ประเภทรายการ (กาช่องเดียว) — ค่าตามชีต Dropdown List ของไฟล์เดิม
-  asset_type     text not null default 'expense'
-                 check (asset_type in ('big','small','expense')),
-
   -- บล็อก "รายละเอียดเพิ่มเติม" — เช็กบ็อกซ์บนฟอร์ม
   pay_no_supplier  boolean not null default false,  -- ไม่ต้องทำจ่ายซัพ
   pay_normal_cycle boolean not null default false,  -- ทำจ่ายให้ซัพฯ ตามรอบปกติ
@@ -131,6 +134,10 @@ create table if not exists pr_request (
   updated_at     timestamptz not null default now()
 );
 
+-- ประเภทรายการย้ายไปอยู่ที่ "รายบรรทัด" (pr_item.item_type) แล้ว
+-- ติดตั้งเดิมที่ยังมีคอลัมน์ระดับใบอยู่ ให้ลบทิ้งตอนรันไฟล์นี้ซ้ำ
+alter table pr_request drop column if exists asset_type;
+
 create index if not exists pr_request_status_idx on pr_request (status, created_at desc);
 create index if not exists pr_request_dept_idx   on pr_request (department, created_at desc);
 
@@ -142,12 +149,20 @@ create table if not exists pr_item (
   request_id  uuid not null references pr_request(id) on delete cascade,
   line_no     int  not null default 1,
   description text not null default '',   -- ชื่อและรายละเอียดสิ่งที่ต้องการ
-  item_type   text not null default '',   -- ประเภท
+  item_type   text not null default 'expense'   -- ประเภท (เลือกต่อบรรทัด)
+              check (item_type in ('big','small','expense')),
   qty         numeric(14,3) not null default 0,
   unit_price  numeric(14,2) not null default 0,   -- ราคาต่อหน่วย (ถ้าทราบ)
   amount      numeric(14,2) generated always as (round(qty * unit_price, 2)) stored,
   note        text not null default ''
 );
+
+-- ติดตั้งเดิมที่ item_type เคยเป็นข้อความอิสระ ให้แปลงเป็นค่าคงที่ก่อนใส่ constraint
+update pr_item set item_type = 'expense' where item_type not in ('big','small','expense');
+alter table pr_item drop constraint if exists pr_item_item_type_check;
+alter table pr_item alter column item_type set default 'expense';
+alter table pr_item add  constraint pr_item_item_type_check
+  check (item_type in ('big','small','expense'));
 
 create index if not exists pr_item_req_idx on pr_item (request_id, line_no);
 
@@ -166,6 +181,34 @@ end $$;
 drop trigger if exists pr_item_total on pr_item;
 create trigger pr_item_total after insert or update or delete on pr_item
   for each row execute function pr_sync_total();
+
+-- ---------------------------------------------------------------
+-- 3.5 ส่วนงานสินทรัพย์ (หน้า 2 ของใบ) — ฝ่ายสินทรัพย์/ฝ่ายบัญชีกรอก
+--
+--     ตั้งใจแยกจาก pr_item ไม่ผูกกัน เพราะของจริงไม่ตรงกันเสมอ:
+--     ขอซื้อ "คอมพิวเตอร์ 2 เครื่อง" 1 บรรทัด แต่ออกรหัสสินทรัพย์ 2 รหัส
+--     ชื่อและมูลค่าที่ลงทะเบียนก็อาจต่างจากที่ขอ (ได้ส่วนลด/เปลี่ยนรุ่น)
+--     จึงต้องพิมพ์แก้ได้อิสระ ไม่ใช่ดึงมาจากรายการขอซื้อแบบล็อกไว้
+--
+--     "ชุดใหญ่ / ชุดเล็ก" ไม่เก็บเป็นคอลัมน์ เพราะฟอร์มนิยามไว้ว่าแบ่งด้วยมูลค่า
+--     (>= 5,000 = ชุดใหญ่, < 5,000 = ชุดเล็ก) ระบบคำนวณให้จาก unit_value
+--     เกณฑ์อยู่ที่ form-config.js ที่เดียว จะได้ไม่มีเลข 5000 กระจายหลายที่
+-- ---------------------------------------------------------------
+create table if not exists pr_asset (
+  id          uuid primary key default gen_random_uuid(),
+  request_id  uuid not null references pr_request(id) on delete cascade,
+  line_no     int  not null default 1,
+  asset_code  text not null default '',   -- รหัสสินทรัพย์
+  asset_name  text not null default '',   -- ชื่อสินทรัพย์ (แก้ได้)
+  qty         numeric(14,3) not null default 0,   -- จำนวนสินทรัพย์
+  unit_value  numeric(14,2) not null default 0,   -- มูลค่าสินทรัพย์/หน่วย (แก้ได้)
+  amount      numeric(14,2) generated always as (round(qty * unit_value, 2)) stored,
+  updated_by  uuid references auth.users(id),
+  updated_name text not null default '',
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists pr_asset_req_idx on pr_asset (request_id, line_no);
 
 -- ---------------------------------------------------------------
 -- 4. ประวัติ — เขียนอย่างเดียว (ไม่มี policy update/delete = แก้ไม่ได้)
@@ -198,6 +241,7 @@ create table if not exists pr_counter (
 alter table pr_member  enable row level security;
 alter table pr_request enable row level security;
 alter table pr_item    enable row level security;
+alter table pr_asset   enable row level security;
 alter table pr_log     enable row level security;
 alter table pr_counter enable row level security;   -- ไม่มี policy = แตะจากหน้าเว็บไม่ได้เลย
 
@@ -206,7 +250,7 @@ drop policy if exists pr_member_read   on pr_member;
 drop policy if exists pr_member_manage on pr_member;
 
 create policy pr_member_read on pr_member for select to authenticated
-  using (user_id = auth.uid() or pr_my_role() in ('it','approver','admin'));
+  using (user_id = auth.uid() or pr_my_role() in ('it','asset','account','approver','admin'));
 
 create policy pr_member_manage on pr_member for all to authenticated
   using (pr_my_role() = 'admin') with check (pr_my_role() = 'admin');
@@ -222,7 +266,7 @@ create policy pr_request_read on pr_request for select to authenticated
   using (
     requester_id = auth.uid()
     or department = pr_my_dept()
-    or pr_my_role() in ('it','approver','admin')
+    or pr_my_role() in ('it','asset','account','approver','admin')
   );
 
 create policy pr_request_insert on pr_request for insert to authenticated
@@ -254,6 +298,12 @@ create policy pr_item_write on pr_item for all to authenticated
     select 1 from pr_request r
      where r.id = request_id and r.requester_id = auth.uid()
        and r.status in ('draft','rejected')));
+
+-- ---- pr_asset ---- อ่านตามใบแม่ / เขียนผ่านฟังก์ชัน pr_save_assets เท่านั้น
+--     (ไม่มี policy insert/update/delete = แก้ตรง ๆ จากหน้าเว็บไม่ได้เลย)
+drop policy if exists pr_asset_read on pr_asset;
+create policy pr_asset_read on pr_asset for select to authenticated
+  using (exists (select 1 from pr_request r where r.id = request_id));
 
 -- ---- pr_log ---- อ่านตามใบแม่ / เขียนผ่านฟังก์ชันเท่านั้น
 drop policy if exists pr_log_read on pr_log;
@@ -361,6 +411,46 @@ begin
   return r;
 end $$;
 
+-- บันทึกตารางส่วนงานสินทรัพย์ทั้งชุด (ลบของเดิมแล้วใส่ใหม่)
+-- ทำเป็นฟังก์ชันเดียวจบเพื่อให้ได้ประวัติ 1 บรรทัดต่อการบันทึก 1 ครั้ง
+-- ไม่ใช่ log ท่วมทุกบรรทัดที่พิมพ์แก้
+create or replace function pr_save_assets(p_id uuid, p_rows jsonb)
+returns setof pr_asset language plpgsql security definer set search_path = public as $$
+declare r pr_request; m pr_member; n int;
+begin
+  if pr_my_role() not in ('asset','account','admin') then
+    raise exception 'เฉพาะฝ่ายสินทรัพย์ ฝ่ายบัญชี หรือผู้ดูแลระบบ เท่านั้นที่กรอกส่วนนี้ได้';
+  end if;
+
+  select * into r from pr_request where id = p_id;
+  if not found then raise exception 'ไม่พบใบขอจัดซื้อนี้'; end if;
+  if r.status not in ('submitted','approved') then
+    raise exception 'กรอกส่วนงานสินทรัพย์ได้เฉพาะใบที่ส่งอนุมัติแล้ว';
+  end if;
+
+  select * into m from pr_member where user_id = auth.uid();
+
+  delete from pr_asset where request_id = p_id;
+
+  insert into pr_asset (request_id, line_no, asset_code, asset_name, qty, unit_value,
+                        updated_by, updated_name)
+  select p_id, row_number() over (order by t.ord),
+         coalesce(t.e->>'asset_code',''),
+         coalesce(t.e->>'asset_name',''),
+         coalesce(nullif(t.e->>'qty','')::numeric, 0),
+         coalesce(nullif(t.e->>'unit_value','')::numeric, 0),
+         auth.uid(), coalesce(m.full_name,'')
+    from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) with ordinality as t(e, ord)
+   where coalesce(t.e->>'asset_name','') <> '' or coalesce(t.e->>'asset_code','') <> '';
+
+  get diagnostics n = row_count;
+
+  insert into pr_log (request_id, actor_id, actor_name, action, note)
+  values (p_id, auth.uid(), coalesce(m.full_name,''), 'assets', n || ' รายการ');
+
+  return query select * from pr_asset where request_id = p_id order by line_no;
+end $$;
+
 -- แปะเลข PR/PO ของ SAP กลับเข้ามาหลังจัดซื้อคีย์เข้าระบบจริง
 create or replace function pr_set_sap_ref(p_id uuid, p_ref text)
 returns pr_request language plpgsql security definer set search_path = public as $$
@@ -382,6 +472,7 @@ end $$;
 grant execute on function pr_submit(uuid)                  to authenticated;
 grant execute on function pr_it_opinion(uuid, text, text)  to authenticated;
 grant execute on function pr_decide(uuid, text, text)      to authenticated;
+grant execute on function pr_save_assets(uuid, jsonb)      to authenticated;
 grant execute on function pr_set_sap_ref(uuid, text)       to authenticated;
 grant execute on function pr_my_role()                     to authenticated;
 grant execute on function pr_my_dept()                     to authenticated;
