@@ -69,6 +69,33 @@ const err = document.getElementById('err');
 const btn = document.getElementById('go');
 const next = new URLSearchParams(location.search).get('next') || 'app.html';
 
+/** แปลข้อผิดพลาดของระบบยืนยันตัวตนเป็นภาษาที่ผู้ใช้เข้าใจ พร้อมบอกว่าต้องทำอะไรต่อ */
+function explainAuthError(e) {
+  const m = (e && (e.message || e.msg)) || String(e);
+  const code = (e && e.code) || '';
+
+  if (/rate limit|too many requests/i.test(m) || code === 'over_email_send_rate_limit') {
+    return `<b>ส่งอีเมลบ่อยเกินไป ระบบขอให้พักก่อน</b>
+      ตอนนี้ใช้บริการส่งอีเมลสำรองที่จำกัดจำนวนต่อชั่วโมง<br><br>
+      <b>ทำได้ตอนนี้:</b> รอสักครู่แล้วกด "ลองใหม่" อีกครั้ง
+      — ถ้าเคยขอลิงก์ไปแล้ว <b>ลองเช็คกล่องจดหมายและกล่องจดหมายขยะก่อน</b> ลิงก์เดิมอาจใช้ได้อยู่`;
+  }
+  if (/invalid|malformed/i.test(m) && /email/i.test(m)) {
+    return `<b>อีเมลไม่ถูกต้อง</b> ตรวจการสะกดอีกครั้ง`;
+  }
+  if (/signups? not allowed|disabled/i.test(m)) {
+    return `<b>ระบบปิดรับสมัครสมาชิกใหม่ชั่วคราว</b> ติดต่อผู้ดูแลระบบเพื่อเปิดให้`;
+  }
+  if (/redirect/i.test(m)) {
+    return `<b>ปลายทางหลังล็อกอินไม่ได้รับอนุญาต</b>
+      ผู้ดูแลต้องเพิ่ม <code>${esc(location.origin)}/**</code> ใน Redirect URLs ของ Supabase`;
+  }
+  if (/fetch|network|failed to fetch/i.test(m)) {
+    return `<b>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</b> ตรวจสัญญาณอินเทอร์เน็ตแล้วลองใหม่`;
+  }
+  return `<b>ส่งลิงก์ไม่สำเร็จ</b><code>${esc(m)}</code>`;
+}
+
 if (!configured) {
   configError(err);
   btn.disabled = true;
@@ -118,7 +145,7 @@ if (!configured) {
           เปิดอีเมลแล้วกดลิงก์เพื่อเข้าสู่ระบบ (เช็คกล่องจดหมายขยะด้วยถ้าไม่เจอ)</span></div>`;
         send.textContent = 'ส่งอีกครั้ง';
       } catch (e) {
-        err.innerHTML = `<div class="errbox"><b>ส่งลิงก์ไม่สำเร็จ</b><code>${esc(e.message)}</code></div>`;
+        err.innerHTML = `<div class="errbox">${explainAuthError(e)}</div>`;
         send.textContent = 'ลองใหม่';
       } finally {
         send.disabled = false;
