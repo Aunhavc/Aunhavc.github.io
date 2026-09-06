@@ -1,0 +1,143 @@
+/* =============================================================
+   ใบขอจัดซื้อ — เลย์เอาต์สำหรับพิมพ์ลงกระดาษ A4 แนวตั้ง
+   ล้อตามไฟล์ Excel เดิม RE15072569 F-HR (ชีต "Form")
+
+   หน้า 1 = ส่วนผู้ขอ + ยอดเงิน + ช่องเซ็น 4 ช่อง
+   หน้า 2 = ส่วนงานสินทรัพย์ + กรณียกเลิกการสั่งซื้อ
+   ============================================================= */
+
+@page { size: A4 portrait; margin: 7mm 5mm 5mm; }
+
+:root{
+  --line:#000;          /* เส้นตารางดำสนิท ถ่ายเอกสารแล้วยังชัด */
+  --ink:#000;
+  --thin:.5pt solid var(--line);
+  --thick:1pt solid var(--line);
+}
+
+*,*::before,*::after{ box-sizing:border-box }
+
+body{
+  margin:0; color:var(--ink); background:#e9e9ec;
+  font-family:"Sarabun","TH Sarabun New","Noto Sans Thai","Leelawadee UI",system-ui,sans-serif;
+  font-size:8.6pt; line-height:1.25;
+}
+
+/* กระดาษ 1 แผ่น — บนจอมีเงาให้เห็นขอบ ตอนพิมพ์เงาหายไปเอง */
+.sheet{
+  width:200mm; min-height:283mm; margin:8mm auto; padding:0;
+  background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.18);
+  display:flex; flex-direction:column;
+}
+.sheet + .sheet{ margin-top:14mm }
+
+/* ---------- หัวเอกสาร ---------- */
+.hd{ display:grid; grid-template-columns:1fr 78mm; gap:2mm; align-items:start }
+.hd h1{ margin:0; font-size:17pt; font-weight:700; text-align:center; letter-spacing:.5pt }
+.hd h2{ margin:1mm 0 0; font-size:11pt; font-weight:700; text-align:center; letter-spacing:1pt }
+.docno{ display:flex; gap:2mm; align-items:baseline; font-weight:700 }
+.docno .v{ flex:1; border-bottom:var(--thin); text-align:center; font-weight:700; min-height:5mm }
+
+/* ---------- เช็กบ็อกซ์ ---------- */
+.cb{ display:inline-flex; align-items:center; gap:1.4mm; margin-inline-end:3mm }
+.cb i{
+  width:3.2mm; height:3.2mm; border:var(--thin); display:inline-block; flex:none;
+  position:relative; font-style:normal;
+}
+.cb.on i::after{
+  content:"✕"; position:absolute; inset:0; font-size:7pt; line-height:3.2mm;
+  text-align:center; font-style:normal;
+}
+
+/* ---------- แถวข้อมูลแบบ "หัวข้อ: เส้นประ" ---------- */
+.fld{ display:flex; align-items:baseline; gap:1.5mm; min-width:0 }
+.fld > b{ font-weight:400; white-space:nowrap }
+.fld > span{ flex:1; border-bottom:var(--thin); min-height:4.6mm; padding:0 1mm; min-width:0 }
+
+.meta{ display:grid; grid-template-columns:1fr 78mm; gap:2mm 4mm; margin-top:1.5mm }
+.meta .right{ display:grid; gap:1mm }
+
+/* ---------- ตารางรายการ ---------- */
+table{ width:100%; border-collapse:collapse; table-layout:fixed }
+th,td{ border:var(--thin); padding:.6mm 1.2mm; vertical-align:top; word-wrap:break-word }
+thead th{ text-align:center; font-weight:700; vertical-align:middle; white-space:nowrap }
+.items{ margin-top:2mm }
+.items tbody td{ height:11mm }
+.num{ text-align:right; font-variant-numeric:tabular-nums }
+.ctr{ text-align:center }
+
+/* ---------- บล็อกล่าง: รายละเอียดเพิ่มเติม | ยอดเงิน ---------- */
+.mid{ display:grid; grid-template-columns:1fr 68mm; gap:0 }
+.mid > div{ border:var(--thin); border-top:0; padding:1.2mm 1.5mm }
+.mid .extra p{ margin:0 0 .8mm }
+.sums{ display:grid; grid-template-columns:1fr 24mm 8mm; gap:.8mm 1.5mm; align-items:baseline }
+.sums .k{ text-align:right }
+.sums .v{ border-bottom:var(--thin); text-align:right; padding-inline-end:1mm; font-variant-numeric:tabular-nums }
+.sums .grand .k, .sums .grand .v{ font-weight:700 }
+.bahttext{ grid-column:1/-1; text-align:center; font-weight:700; border:var(--thin); padding:.8mm; margin-top:1mm }
+
+/* ---------- แถวเงื่อนไข + ความเห็น IT ---------- */
+.row3{ display:grid; grid-template-columns:1fr 52mm; gap:0 }
+.row3 > div{ border:var(--thin); border-top:0; padding:1.2mm 1.5mm }
+.row3 h4{ margin:0 0 .8mm; font-size:8.6pt; font-weight:700 }
+.cond{ margin:0; padding-inline-start:4mm }
+.cond li{ margin-bottom:.5mm }
+
+/* ---------- ช่องลงนาม ---------- */
+.signs{ display:grid; gap:0; margin-top:0 }
+.signs.n4{ grid-template-columns:repeat(4,1fr) }
+.signs.n5{ grid-template-columns:repeat(5,1fr) }
+.sign{
+  border:var(--thin); border-top:0; padding:1.5mm 1mm; text-align:center;
+  display:flex; flex-direction:column; min-width:0; overflow:hidden;
+}
+.signs > .sign:not(:first-child){ border-inline-start:0 }
+.signs.n4 > .sign:first-child, .signs.n5 > .sign:first-child{ border-inline-start:var(--thin) }
+.sign .t{ font-weight:700; margin-bottom:1mm }
+.sign .space{ flex:1; min-height:13mm }
+.sign .nm{ border-top:0 }
+.sign .dots{ display:flex; gap:1mm; justify-content:center; font-size:7.4pt }
+.blank{ display:inline-block; border-bottom:.4pt dotted var(--line); min-width:8mm; flex:1 }
+.sign .nm .blank{ min-width:60% }
+.sign .nm{ font-size:8.2pt }
+.sign small{ display:block; font-size:6.9pt; line-height:1.2; min-height:3.6mm; margin-bottom:1.2mm }
+
+/* ---------- ส่วนหัวแถบดำ ---------- */
+.band{
+  border:var(--thin); border-top:0; text-align:center; font-weight:700;
+  padding:1mm; background:#eaeaea;
+}
+
+/* ---------- ท้ายกระดาษ ---------- */
+.foot{ margin-top:auto; padding-top:2mm; display:flex; gap:3mm; align-items:flex-end; font-size:7.4pt }
+.foot .code{ white-space:nowrap; font-weight:700 }
+.foot .note{ flex:1; text-align:center }
+.foot .stamp{ white-space:nowrap; color:#333 }
+
+/* ---------- แถบเครื่องมือ (บนจอเท่านั้น) ---------- */
+.bar{
+  position:sticky; top:0; z-index:10; background:#1f2430; color:#fff;
+  display:flex; gap:8px; align-items:center; padding:10px 16px;
+  font-family:"Sarabun",system-ui,sans-serif; font-size:14px;
+}
+.bar b{ font-weight:600 }
+.bar .sp{ flex:1 }
+.bar button, .bar a{
+  background:#3b82f6; color:#fff; border:0; border-radius:8px; padding:7px 16px;
+  font:inherit; cursor:pointer; text-decoration:none;
+}
+.bar a.ghost{ background:transparent; border:1px solid #4b5563 }
+.warnbar{
+  background:#fde68a; color:#713f12; padding:10px 16px; font-size:13.5px;
+  font-family:"Sarabun",system-ui,sans-serif;
+}
+
+@media print{
+  body{ background:#fff }
+  .sheet{
+    width:auto; min-height:auto; margin:0; box-shadow:none;
+    page-break-after:always; break-after:page;
+  }
+  .sheet:last-of-type{ page-break-after:auto; break-after:auto }
+  .bar, .warnbar, .noprint{ display:none !important }
+}

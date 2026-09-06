@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ใบขอจัดซื้อ · พิมพ์</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="print.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<div class="bar noprint">
+  <b>ใบขอจัดซื้อ</b>
+  <span id="barDoc"></span>
+  <span class="sp"></span>
+  <a class="ghost" id="backLink" href="index.html">กลับ</a>
+  <button id="printBtn">พิมพ์ / บันทึกเป็น PDF</button>
+</div>
+
+<div id="warn"></div>
+<div id="out"><p style="padding:24px;font-family:Sarabun,system-ui">กำลังโหลด…</p></div>
+
+<script src="config.js"></script>
+<script src="boot-check.js"></script>
+<script type="module" src="print.js"></script>
+</body>
+</html>
