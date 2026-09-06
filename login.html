@@ -31,13 +31,25 @@
       <div id="divider" style="display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--muted);font-size:12.5px">
         <span style="flex:1;height:1px;background:var(--line)"></span>หรือ<span style="flex:1;height:1px;background:var(--line)"></span>
       </div>
-      <label class="field" for="email" style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px">เข้าสู่ระบบด้วยอีเมล</label>
-      <div style="display:flex;gap:8px">
-        <input class="search" id="email" type="email" autocomplete="email"
-               placeholder="you@example.com" style="flex:1;min-width:0">
-        <button class="btn primary" id="sendLink" style="white-space:nowrap">ส่งลิงก์</button>
+      <label class="field" for="email">อีเมล</label>
+      <input class="search" id="email" type="email" autocomplete="email"
+             placeholder="you@example.com" style="width:100%">
+
+      <label class="field" for="pw" style="margin-top:12px">รหัสผ่าน</label>
+      <input class="search" id="pw" type="password" autocomplete="current-password"
+             placeholder="อย่างน้อย 6 ตัวอักษร" style="width:100%">
+
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn primary" id="doLogin" style="flex:1">เข้าสู่ระบบ</button>
+        <button class="btn" id="doSignup" style="flex:1">สมัครใหม่</button>
       </div>
-      <p class="legal" style="margin-top:10px">เราจะส่งลิงก์เข้าสู่ระบบไปที่อีเมลของคุณ ไม่ต้องตั้งรหัสผ่าน</p>
+
+      <p class="legal" style="margin-top:12px">
+        ยังไม่มีบัญชี? กด <b>สมัครใหม่</b> ใช้ได้ทันที<br>
+        <button class="btn quiet" id="useMagic" style="margin-top:8px;font-size:13px">
+          หรือส่งลิงก์เข้าสู่ระบบทางอีเมลแทน
+        </button>
+      </p>
     </div>
 
     <p class="legal">
@@ -50,7 +62,8 @@
 <script src="config.js"></script>
 <script type="module">
 import { supabase, configured, configError, getSession, signInWithGoogle,
-         signInWithEmail, enabledProviders, esc } from './lib/auth.js';
+         signInWithEmail, signInWithPassword, signUpWithPassword,
+         enabledProviders, esc } from './lib/auth.js';
 
 const cfg = window.PLANNER_CONFIG || {};
 document.getElementById('title').textContent = cfg.APP_NAME || 'Ultimate ADHD Planner';
@@ -79,6 +92,21 @@ function explainAuthError(e) {
       ตอนนี้ใช้บริการส่งอีเมลสำรองที่จำกัดจำนวนต่อชั่วโมง<br><br>
       <b>ทำได้ตอนนี้:</b> รอสักครู่แล้วกด "ลองใหม่" อีกครั้ง
       — ถ้าเคยขอลิงก์ไปแล้ว <b>ลองเช็คกล่องจดหมายและกล่องจดหมายขยะก่อน</b> ลิงก์เดิมอาจใช้ได้อยู่`;
+  }
+  if (/invalid login credentials/i.test(m) || code === 'invalid_credentials') {
+    return `<b>อีเมลหรือรหัสผ่านไม่ถูกต้อง</b>
+      ถ้ายังไม่เคยสมัคร ให้กดปุ่ม <b>สมัครใหม่</b> แทน`;
+  }
+  if (/already registered|user already exists/i.test(m) || code === 'user_already_exists') {
+    return `<b>อีเมลนี้สมัครไว้แล้ว</b> กดปุ่ม <b>เข้าสู่ระบบ</b> แทน
+      — ถ้าจำรหัสผ่านไม่ได้ ติดต่อผู้ดูแลระบบ`;
+  }
+  if (/email not confirmed/i.test(m) || code === 'email_not_confirmed') {
+    return `<b>ระบบยังบังคับให้ยืนยันอีเมลก่อน</b>
+      ผู้ดูแลต้องปิด "Confirm email" ที่ Supabase → Authentication → Providers → Email`;
+  }
+  if (/password.*(6|short|weak)/i.test(m) || code === 'weak_password') {
+    return `<b>รหัสผ่านสั้นหรือคาดเดาง่ายเกินไป</b> ใช้อย่างน้อย 6 ตัวอักษร`;
   }
   if (/invalid|malformed/i.test(m) && /email/i.test(m)) {
     return `<b>อีเมลไม่ถูกต้อง</b> ตรวจการสะกดอีกครั้ง`;
@@ -127,33 +155,56 @@ if (!configured) {
   if (providers.email) {
     const box = document.getElementById('emailBox');
     box.hidden = false;
-    const input = document.getElementById('email');
-    const send = document.getElementById('sendLink');
+    const email = document.getElementById('email');
+    const pw = document.getElementById('pw');
 
-    const submit = async () => {
-      const addr = input.value.trim();
-      if (!addr || !addr.includes('@')) {
-        err.innerHTML = '<div class="errbox"><b>กรอกอีเมลให้ถูกต้องก่อน</b></div>';
-        return;
-      }
-      send.disabled = true;
-      send.textContent = 'กำลังส่ง…';
-      try {
-        await signInWithEmail(addr, next);
-        err.innerHTML = `<div class="banner ok"><span class="grow">
-          <b>ส่งลิงก์ไปที่ ${esc(addr)} แล้ว</b>
-          เปิดอีเมลแล้วกดลิงก์เพื่อเข้าสู่ระบบ (เช็คกล่องจดหมายขยะด้วยถ้าไม่เจอ)</span></div>`;
-        send.textContent = 'ส่งอีกครั้ง';
-      } catch (e) {
-        err.innerHTML = `<div class="errbox">${explainAuthError(e)}</div>`;
-        send.textContent = 'ลองใหม่';
-      } finally {
-        send.disabled = false;
-      }
+    const need = () => {
+      const a = email.value.trim();
+      if (!a.includes('@')) { err.innerHTML = '<div class="errbox"><b>กรอกอีเมลให้ถูกต้องก่อน</b></div>'; return null; }
+      if (pw.value.length < 6) { err.innerHTML = '<div class="errbox"><b>รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร</b></div>'; return null; }
+      return a;
     };
 
-    send.addEventListener('click', submit);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+    const run = async (btn, label, fn) => {
+      btn.disabled = true;
+      const t0 = btn.textContent;
+      btn.textContent = label;
+      try { await fn(); }
+      catch (e) { err.innerHTML = `<div class="errbox">${explainAuthError(e)}</div>`; }
+      finally { btn.disabled = false; btn.textContent = t0; }
+    };
+
+    document.getElementById('doLogin').addEventListener('click', () => {
+      const a = need(); if (!a) return;
+      run(document.getElementById('doLogin'), 'กำลังเข้าสู่ระบบ…', async () => {
+        await signInWithPassword(a, pw.value);
+        location.replace(next);
+      });
+    });
+
+    document.getElementById('doSignup').addEventListener('click', () => {
+      const a = need(); if (!a) return;
+      run(document.getElementById('doSignup'), 'กำลังสมัคร…', async () => {
+        const ready = await signUpWithPassword(a, pw.value);
+        if (ready) { location.replace(next); return; }
+        err.innerHTML = `<div class="banner warn"><span class="grow">
+          <b>สมัครแล้ว แต่ระบบยังบังคับให้ยืนยันอีเมลก่อน</b>
+          ผู้ดูแลต้องปิด "Confirm email" ใน Supabase → Authentication → Providers → Email
+          แล้วคุณถึงจะเข้าใช้ได้ทันทีโดยไม่ต้องรออีเมล</span></div>`;
+      });
+    });
+
+    pw.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('doLogin').click(); });
+
+    document.getElementById('useMagic').addEventListener('click', () => {
+      const a = email.value.trim();
+      if (!a.includes('@')) { err.innerHTML = '<div class="errbox"><b>กรอกอีเมลก่อน</b></div>'; return; }
+      run(document.getElementById('useMagic'), 'กำลังส่ง…', async () => {
+        await signInWithEmail(a, next);
+        err.innerHTML = `<div class="banner ok"><span class="grow">
+          <b>ส่งลิงก์ไปที่ ${esc(a)} แล้ว</b> เปิดอีเมลแล้วกดลิงก์ (เช็คกล่องจดหมายขยะด้วย)</span></div>`;
+      });
+    });
   }
 }
 </script>
