@@ -61,6 +61,29 @@
     <div class="plans" id="plans"></div>
 
     <div class="panel" style="margin-top:22px">
+      <h2>บัญชีของฉัน</h2>
+      <p class="lead" style="text-align:start;margin:6px 0 14px;max-width:none" id="whoami"></p>
+      <div style="display:grid;gap:9px;max-width:420px">
+        <div>
+          <label for="npw" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">ตั้งรหัสผ่านใหม่</label>
+          <input id="npw" type="password" autocomplete="new-password" placeholder="อย่างน้อย 6 ตัวอักษร"
+                 style="width:100%;background:var(--ground);border:1px solid var(--line);
+                        border-radius:8px;padding:9px 12px;font:inherit;font-size:14px;color:var(--ink)">
+        </div>
+        <div>
+          <label for="npw2" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">พิมพ์ซ้ำอีกครั้ง</label>
+          <input id="npw2" type="password" autocomplete="new-password" placeholder="พิมพ์รหัสเดิมอีกครั้ง"
+                 style="width:100%;background:var(--ground);border:1px solid var(--line);
+                        border-radius:8px;padding:9px 12px;font:inherit;font-size:14px;color:var(--ink)">
+        </div>
+        <button class="btn primary" id="savePw" style="justify-self:start">บันทึกรหัสผ่านใหม่</button>
+      </div>
+      <p class="lead" style="text-align:start;margin:12px 0 0;max-width:none;font-size:13px">
+        ลืมรหัสผ่านจนเข้าไม่ได้? ติดต่อผู้ดูแลระบบให้ตั้งรหัสใหม่ให้
+      </p>
+    </div>
+
+    <div class="panel" style="margin-top:22px">
       <h2>ข้อมูลของคุณเป็นของคุณ</h2>
       <p class="lead" style="margin-bottom:0">
         ถ้าหยุดจ่าย เราไม่ลบข้อมูลทิ้งและไม่ล็อกไว้ — คุณยัง<b>เปิดอ่านและดาวน์โหลดออกไปเป็นไฟล์ได้เสมอ</b>
@@ -334,6 +357,30 @@ document.addEventListener('click', async e => {
     showErr(`<div class="errbox"><b>เปิดหน้าชำระเงินไม่สำเร็จ</b>
       <code>${esc(err.message || err)}</code><br><br>
       ตรวจว่า deploy Edge Function <code>create-checkout</code> และตั้ง secret ของ Stripe แล้วหรือยัง (ดู STRIPE.md)</div>`);
+  }
+});
+
+/* ---------------- เปลี่ยนรหัสผ่านของตัวเอง (ไม่ต้องใช้อีเมล) ---------------- */
+$('whoami').innerHTML = `เข้าสู่ระบบในชื่อ <b>${esc(me.email)}</b>`;
+
+document.getElementById('savePw').addEventListener('click', async () => {
+  const a = $('npw').value, b = $('npw2').value;
+  const btn = $('savePw');
+  if (a.length < 6) { showErr('<div class="errbox"><b>รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร</b></div>'); return; }
+  if (a !== b) { showErr('<div class="errbox"><b>รหัสผ่านสองช่องไม่ตรงกัน</b></div>'); return; }
+  btn.disabled = true;
+  const t0 = btn.textContent;
+  btn.textContent = 'กำลังบันทึก…';
+  try {
+    const { error } = await supabase.auth.updateUser({ password: a });
+    if (error) throw error;
+    $('npw').value = ''; $('npw2').value = '';
+    clearErr();
+    toast('เปลี่ยนรหัสผ่านแล้ว ครั้งต่อไปใช้รหัสใหม่');
+  } catch (err) {
+    showErr(`<div class="errbox"><b>เปลี่ยนรหัสผ่านไม่สำเร็จ</b><code>${esc(err.message || err)}</code></div>`);
+  } finally {
+    btn.disabled = false; btn.textContent = t0;
   }
 });
 

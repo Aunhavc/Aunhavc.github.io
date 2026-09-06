@@ -278,6 +278,7 @@ function drawUsers() {
           <option value="d180">ต่อ 6 เดือน</option>
           <option value="yearly">ให้ 1 ปี</option>
           <option value="lifetime">ตลอดชีพ</option>
+          <option value="resetpw">🔑 ตั้งรหัสผ่านใหม่</option>
         </select>
       </div></td>
     </tr>`;
@@ -690,11 +691,31 @@ document.addEventListener('change', async e => {
 
   const sel = e.target.closest('[data-grant]');
   if (sel) {
-    const g = GRANTS[sel.value];
-    if (!g) return;
     const id = sel.dataset.grant;
     const u = USERS.find(x => x.id === id);
     const who = u?.full_name || u?.email || 'ผู้ใช้รายนี้';
+
+    // ตั้งรหัสผ่านใหม่ให้ผู้ใช้ที่ลืมรหัส (ระบบยังส่งอีเมลไม่ได้)
+    if (sel.value === 'resetpw') {
+      const pw = prompt(`ตั้งรหัสผ่านใหม่ให้ ${u?.email || who}
+
+อย่างน้อย 6 ตัวอักษร — จดไว้แล้วแจ้งผู้ใช้ทางช่องทางอื่น`);
+      sel.value = '';
+      if (pw === null) return;
+      if (pw.length < 6) { showError(new Error('รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร')); return; }
+      sel.disabled = true;
+      try {
+        const { error } = await supabase.rpc('admin_set_password', { target: id, new_password: pw });
+        if (error) throw error;
+        clearError();
+        toast(`ตั้งรหัสผ่านใหม่ให้ ${who} แล้ว — อย่าลืมแจ้งผู้ใช้`);
+      } catch (err) { showError(err); }
+      finally { sel.disabled = false; }
+      return;
+    }
+
+    const g = GRANTS[sel.value];
+    if (!g) return;
     sel.disabled = true;
     try {
       const { error } = await supabase.rpc(g.rpc, { target: id, ...g.args });
