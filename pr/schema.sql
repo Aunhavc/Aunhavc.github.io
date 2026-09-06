@@ -190,9 +190,9 @@ create trigger pr_item_total after insert or update or delete on pr_item
 --     ชื่อและมูลค่าที่ลงทะเบียนก็อาจต่างจากที่ขอ (ได้ส่วนลด/เปลี่ยนรุ่น)
 --     จึงต้องพิมพ์แก้ได้อิสระ ไม่ใช่ดึงมาจากรายการขอซื้อแบบล็อกไว้
 --
---     "ชุดใหญ่ / ชุดเล็ก" ไม่เก็บเป็นคอลัมน์ เพราะฟอร์มนิยามไว้ว่าแบ่งด้วยมูลค่า
---     (>= 5,000 = ชุดใหญ่, < 5,000 = ชุดเล็ก) ระบบคำนวณให้จาก unit_value
---     เกณฑ์อยู่ที่ form-config.js ที่เดียว จะได้ไม่มีเลข 5000 กระจายหลายที่
+--     "ชุดใหญ่ / ชุดเล็ก" เก็บเป็นคอลัมน์ set_type ให้ฝ่ายสินทรัพย์เลือกเอง
+--     ไม่ได้คำนวณจากมูลค่าอย่างเดียว เพราะของจริงไม่ได้ผูกกับเกณฑ์ราคาเสมอ
+--     (หน้าเว็บยังช่วยเดาให้ตอนพิมพ์มูลค่าครั้งแรก แต่กดเปลี่ยนทับได้)
 -- ---------------------------------------------------------------
 create table if not exists pr_asset (
   id          uuid primary key default gen_random_uuid(),
@@ -202,11 +202,18 @@ create table if not exists pr_asset (
   asset_name  text not null default '',   -- ชื่อสินทรัพย์ (แก้ได้)
   qty         numeric(14,3) not null default 0,   -- จำนวนสินทรัพย์
   unit_value  numeric(14,2) not null default 0,   -- มูลค่าสินทรัพย์/หน่วย (แก้ได้)
+  set_type    text not null default 'small'        -- ชุดใหญ่ / ชุดเล็ก (ฝ่ายสินทรัพย์เลือก)
+              check (set_type in ('big','small')),
   amount      numeric(14,2) generated always as (round(qty * unit_value, 2)) stored,
   updated_by  uuid references auth.users(id),
   updated_name text not null default '',
   updated_at  timestamptz not null default now()
 );
+
+-- ติดตั้งเดิมที่ยังไม่มีคอลัมน์ชุดสินทรัพย์ ให้เพิ่มตอนรันไฟล์นี้ซ้ำ
+alter table pr_asset add column if not exists set_type text not null default 'small';
+alter table pr_asset drop constraint if exists pr_asset_set_type_check;
+alter table pr_asset add  constraint pr_asset_set_type_check check (set_type in ('big','small'));
 
 create index if not exists pr_asset_req_idx on pr_asset (request_id, line_no);
 
@@ -432,13 +439,14 @@ begin
 
   delete from pr_asset where request_id = p_id;
 
-  insert into pr_asset (request_id, line_no, asset_code, asset_name, qty, unit_value,
+  insert into pr_asset (request_id, line_no, asset_code, asset_name, qty, unit_value, set_type,
                         updated_by, updated_name)
   select p_id, row_number() over (order by t.ord),
          coalesce(t.e->>'asset_code',''),
          coalesce(t.e->>'asset_name',''),
          coalesce(nullif(t.e->>'qty','')::numeric, 0),
          coalesce(nullif(t.e->>'unit_value','')::numeric, 0),
+         case when t.e->>'set_type' = 'big' then 'big' else 'small' end,
          auth.uid(), coalesce(m.full_name,'')
     from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) with ordinality as t(e, ord)
    where coalesce(t.e->>'asset_name','') <> '' or coalesce(t.e->>'asset_code','') <> '';

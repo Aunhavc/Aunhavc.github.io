@@ -206,8 +206,9 @@ function render() {
     <div class="card">
       <h2>ส่วนงานสินทรัพย์</h2>
       <p class="muted" style="margin:-6px 0 12px">
-        ฝ่ายสินทรัพย์ / ฝ่ายบัญชี กรอกหลังใบได้รับอนุมัติ —
-        ชุดใหญ่/ชุดเล็กระบบแบ่งให้เองจากมูลค่าต่อหน่วย (ตั้งแต่ ${money(FORM.assetSetThreshold)} บาทขึ้นไป = ชุดใหญ่)
+        ฝ่ายสินทรัพย์ / ฝ่ายบัญชี กรอกหลังใบได้รับอนุมัติ — ทุกช่องพิมพ์แก้ได้
+        ${FORM.assetSetThreshold ? `(ช่อง "ชุด" ระบบเดาให้ตอนพิมพ์มูลค่าครั้งแรก
+        ตั้งแต่ ${money(FORM.assetSetThreshold)} บาทขึ้นไป = ชุดใหญ่ — กดเปลี่ยนทับได้)` : ''}
       </p>
       <div class="scroll">
         <table class="lines" id="assets">
@@ -218,7 +219,7 @@ function render() {
             <th style="width:80px">จำนวน</th>
             <th style="width:120px">มูลค่า/หน่วย</th>
             <th style="width:110px;text-align:end">มูลค่ารวม</th>
-            <th style="width:70px">ชุด</th>
+            <th style="width:105px">ชุด</th>
           </tr></thead>
           <tbody>${assetRowsHtml()}</tbody>
         </table>
@@ -285,7 +286,8 @@ function assetRow(a, ro) {
     <td><input class="as" data-k="qty"        type="number" step="0.001" min="0" value="${a.qty ?? ''}"${d}></td>
     <td><input class="as" data-k="unit_value" type="number" step="0.01"  min="0" value="${a.unit_value ?? ''}"${d}></td>
     <td class="amt" data-aamt></td>
-    <td class="muted" data-aset style="padding-top:13px;font-size:13px"></td>
+    <td><select class="as" data-k="set_type"${d}>${FORM.assetSets.map(o =>
+        `<option value="${o.value}"${(a.set_type || 'small') === o.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></td>
   </tr>`;
 }
 
@@ -293,7 +295,7 @@ function assetRowsHtml() {
   const ro = !canEditAssets();
   const rows = [...assets];
   // เว้นบรรทัดว่างให้พิมพ์ต่อได้ เฉพาะตอนที่มีสิทธิ์กรอก
-  if (!ro) while (rows.length < 3) rows.push({ asset_code:'', asset_name:'', qty:'', unit_value:'' });
+  if (!ro) while (rows.length < 3) rows.push({ asset_code:'', asset_name:'', qty:'', unit_value:'', set_type:'small' });
   return rows.map(a => assetRow(a, ro)).join('');
 }
 
@@ -399,20 +401,16 @@ function recalcAssets() {
     tr.querySelector('[data-aamt]').textContent = a ? money(a) : '';
     tr.cells[0].textContent = named ? (i + 1) : '';
 
-    const setCell = tr.querySelector('[data-aset]');
-    if (named && u) {
-      const isBig = u >= FORM.assetSetThreshold;
-      setCell.textContent = FORM.assetSetLabel[isBig ? 'big' : 'small'];
-      if (isBig) big += a; else small += a;
-    } else {
-      setCell.textContent = '';
+    if (named) {
+      if (tr.querySelector('[data-k=set_type]')?.value === 'big') big += a; else small += a;
+      qtyAll += q;
+      valAll += a;
     }
-    if (named) { qtyAll += q; valAll += a; }
   });
 
   box.innerHTML = `
-    <span class="k">ชุดใหญ่ (ตั้งแต่ ${money(FORM.assetSetThreshold)})</span><span class="v">${money(big)}</span>
-    <span class="k">ชุดเล็ก (ต่ำกว่า ${money(FORM.assetSetThreshold)})</span><span class="v">${money(small)}</span>
+    <span class="k">รวมชุดใหญ่</span><span class="v">${money(big)}</span>
+    <span class="k">รวมชุดเล็ก</span><span class="v">${money(small)}</span>
     <span class="k">จำนวนสินทรัพย์รวม</span><span class="v">${qtyAll || ''}</span>
     <span class="k grand">มูลค่าสินทรัพย์รวม</span><span class="v grand">${money(valAll)}</span>`;
 }
@@ -428,11 +426,27 @@ function wire() {
   document.getElementById('vat_rate')?.addEventListener('input', recalc);
   document.getElementById('wht_rate')?.addEventListener('change', recalc);
 
-  document.getElementById('assets')?.addEventListener('input', recalcAssets);
+  /* เดาชุดให้จากมูลค่าต่อหน่วย เฉพาะบรรทัดที่ผู้ใช้ยังไม่เคยแตะช่อง "ชุด" เอง
+     พอแตะแล้วจะไม่เดาทับอีก — คนที่รู้จริงคือฝ่ายสินทรัพย์ ไม่ใช่เกณฑ์ราคา */
+  document.getElementById('assets')?.addEventListener('input', e => {
+    const tr = e.target.closest('tr');
+    if (tr && e.target.dataset.k === 'unit_value' && FORM.assetSetThreshold) {
+      const sel = tr.querySelector('[data-k=set_type]');
+      if (sel && !sel.dataset.touched) {
+        sel.value = Number(e.target.value) >= FORM.assetSetThreshold ? 'big' : 'small';
+      }
+    }
+    recalcAssets();
+  });
+
+  document.getElementById('assets')?.addEventListener('change', e => {
+    if (e.target.dataset.k === 'set_type') e.target.dataset.touched = '1';
+    recalcAssets();
+  });
 
   document.getElementById('addAsset')?.addEventListener('click', () => {
     document.querySelector('#assets tbody').insertAdjacentHTML('beforeend',
-      assetRow({ asset_code:'', asset_name:'', qty:'', unit_value:'' }, false));
+      assetRow({ asset_code:'', asset_name:'', qty:'', unit_value:'', set_type:'small' }, false));
   });
 
   document.getElementById('saveAssets')?.addEventListener('click', async () => {
