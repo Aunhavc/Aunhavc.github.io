@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>พรีวิวใบขอจัดซื้อ (สำหรับตรวจเลย์เอาต์เท่านั้น)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="print.css">
+<script src="config.js"></script>
+</head>
+<body class="printpage">
+<div class="paperpad"><div id="sheet"></div></div>
+<script type="module">
+import { renderSheet } from './lib/sheet.js';
+
+const sample = {
+  doc_no: 'PR-SA-6909-10-0042', rev: 0, status: 'submitted',
+  doc_type: 'asset_large', request_kind: 'buy',
+  department: { code: 'SA', name: 'การตลาด/ออนไลน์', approver: 'ceo', cost_center: '10101000' },
+  branch: { code: '10', name: 'สาขาเอ็มบีเค' },
+  cost_center: '10101000', doc_date: '2026-09-07',
+  reason: 'other', reason_other: 'สำรองส่วนกลาง',
+  suggested_vendor: 'บ. ปั้นมากับมือ',
+  needs_it: true, it_opinion: 'approve', it_note: 'สเปกผ่าน ใช้กับระบบ POS ได้',
+  it_at: '2026-09-07',
+  payment_method: 'normal_cycle', refund_payee: '', refund_bank: '',
+  advance_doc_no: '', already_at_branch: false, install_date: '', receiver_name: '',
+  discount: 200, vat_rate: 7, wht_rate: 0,
+  creator_name: 'สุมณฑา ใจแสงทอง', creator_position: 'ประสานงานฝ่ายขาย',
+  items: [
+    { name: 'โน้ตบุ๊ก Dell Latitude 3410', detail: 'Cpu i5-10210U Ram 16 GB SSD 512GB', qty: 1, unit_price: 5999, note: '' },
+    { name: 'กระเป๋าใส่โน้ตบุ๊ก 15 นิ้ว', detail: '', qty: 1, unit_price: 200, note: 'แถมจากร้าน' }
+  ],
+  assets: [
+    { asset_code: 'CO1026090088', asset_name: 'Notebook Dell Latitude 3410', asset_value: 5999, coded_at: '2026-09-08' }
+  ]
+};
+
+document.getElementById('sheet').innerHTML = renderSheet(sample);
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ใบขอจัดซื้อ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="config.js"></script>
+</head>
+<body>
+<div id="bar"></div>
+<main class="wrap">
+  <div class="pagehead">
+    <div>
+      <h1>ใบขอจัดซื้อ</h1>
+      <p class="lead" id="scope"></p>
+    </div>
+    <span class="grow"></span>
+    <label style="max-width:200px"><span>ค้นหาเลขที่</span>
+      <input type="search" id="q" placeholder="PR-SA-6909-…"></label>
+    <a class="btn" href="form.html" id="newbtn">+ เปิดใบใหม่</a>
+  </div>
+  <div id="todo"></div>
+  <div id="list"><p class="empty">กำลังโหลด…</p></div>
+</main>
+<script type="module" src="lib/list.js"></script>
+</body>
+</html>

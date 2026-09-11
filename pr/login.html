@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เข้าสู่ระบบ — ใบขอจัดซื้อ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="config.js"></script>
+</head>
+<body>
+<div class="authwrap">
+  <form class="authcard" id="form">
+    <h1>ใบขอจัดซื้อ<br><span style="font-size:14px;font-weight:400;color:var(--ink-2)">สมใจบิซกรุ๊ป</span></h1>
+    <div id="msg"></div>
+    <div class="grid">
+      <label><span class="req">อีเมล</span>
+        <input type="email" id="email" autocomplete="username" required></label>
+      <label><span class="req">รหัสผ่าน</span>
+        <input type="password" id="password" autocomplete="current-password" minlength="6" required></label>
+      <button class="btn" id="go" type="submit">เข้าสู่ระบบ</button>
+      <div style="text-align:center">
+        <button type="button" class="swap" id="swap">ยังไม่มีบัญชี? สมัครใช้งาน</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script type="module">
+import { sb, configured } from './lib/db.js';
+
+const form = document.getElementById('form');
+const msg  = document.getElementById('msg');
+const go   = document.getElementById('go');
+const swap = document.getElementById('swap');
+let mode = 'signin';
+
+if (!configured) {
+  msg.innerHTML = '<div class="errbox">ยังไม่ได้ตั้งค่า <code>pr/config.js</code> — กรอก SUPABASE_URL และ SUPABASE_ANON_KEY ก่อน</div>';
+  go.disabled = true;
+}
+
+const next = new URLSearchParams(location.search).get('next') || 'index.html';
+
+swap.addEventListener('click', () => {
+  mode = mode === 'signin' ? 'signup' : 'signin';
+  go.textContent = mode === 'signin' ? 'เข้าสู่ระบบ' : 'สมัครใช้งาน';
+  swap.textContent = mode === 'signin' ? 'ยังไม่มีบัญชี? สมัครใช้งาน' : 'มีบัญชีแล้ว? เข้าสู่ระบบ';
+  document.getElementById('password').autocomplete = mode === 'signin' ? 'current-password' : 'new-password';
+  msg.innerHTML = '';
+});
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  go.disabled = true;
+  msg.innerHTML = '';
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    if (mode === 'signin') {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      location.replace(next);
+    } else {
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data.session) {
+        msg.innerHTML = '<div class="okbox">สมัครเรียบร้อย — แจ้งแอดมินให้กำหนดฝ่ายและสิทธิ์ให้ก่อนจึงจะเปิดใบได้</div>';
+        setTimeout(() => location.replace(next), 1200);
+      } else {
+        msg.innerHTML = '<div class="okbox">สมัครแล้ว กรุณายืนยันอีเมลก่อนเข้าใช้งาน</div>';
+      }
+    }
+  } catch (err) {
+    msg.innerHTML = `<div class="errbox">${translate(err.message)}</div>`;
+  } finally {
+    go.disabled = false;
+  }
+});
+
+/** ข้อความจาก Supabase เป็นภาษาอังกฤษ แปลเป็นไทยพร้อมบอกทางแก้ */
+function translate(m = '') {
+  const s = m.toLowerCase();
+  if (s.includes('invalid login')) return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+  if (s.includes('already registered')) return 'อีเมลนี้สมัครไว้แล้ว — กดสลับไปหน้าเข้าสู่ระบบ';
+  if (s.includes('email not confirmed')) return 'ยังไม่ได้ยืนยันอีเมล — ตรวจกล่องจดหมาย หรือให้แอดมินยืนยันให้จาก Supabase';
+  if (s.includes('password')) return 'รหัสผ่านสั้นเกินไป ต้องอย่างน้อย 6 ตัวอักษร';
+  if (s.includes('rate limit')) return 'ลองบ่อยเกินไป รออีกสักครู่แล้วลองใหม่';
+  return m;
+}
+</script>
+</body>
+</html>

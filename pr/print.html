@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ใบขอจัดซื้อ — พิมพ์</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="print.css">
+<script src="config.js"></script>
+</head>
+<body class="printpage">
+
+<div class="toolbar" id="toolbar">
+  <a href="index.html">← กลับรายการ</a>
+  <span id="tinfo"></span>
+  <span class="grow"></span>
+  <span class="warn" id="twarn"></span>
+  <button class="primary" id="doprint">พิมพ์ใบนี้</button>
+</div>
+
+<div class="paperpad"><div id="sheet"></div></div>
+
+<script type="module" src="lib/print.js"></script>
+</body>
+</html>
