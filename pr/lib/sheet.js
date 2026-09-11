@@ -102,6 +102,7 @@ export function renderSheet(pr) {
     <div class="hd">
       <div>
         <div class="logo">สมใจ</div>
+        <div class="co">${esc(cfg.COMPANY_NAME || '')}</div>
         <div class="vend">
           ชื่อผู้ขายที่แนะนำ (ถ้ามี)
           <div class="val">${esc(pr.suggested_vendor || '')}</div>

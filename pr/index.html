@@ -6,7 +6,7 @@
 <title>ใบขอจัดซื้อ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="styles.css">
 <script src="config.js"></script>
 </head>
@@ -15,12 +15,15 @@
 <main class="wrap">
   <div class="pagehead">
     <div>
+      <div class="eyebrow">สมใจบิซกรุ๊ป</div>
       <h1>ใบขอจัดซื้อ</h1>
       <p class="lead" id="scope"></p>
     </div>
-    <span class="grow"></span>
-    <label style="max-width:200px"><span>ค้นหาเลขที่</span>
+  </div>
+  <div class="toolbar">
+    <label><span>ค้นหาเลขที่เอกสาร</span>
       <input type="search" id="q" placeholder="PR-SA-6909-…"></label>
+    <span class="grow"></span>
     <a class="btn" href="form.html" id="newbtn">+ เปิดใบใหม่</a>
   </div>
   <div id="todo"></div>

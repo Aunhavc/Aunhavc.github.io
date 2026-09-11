@@ -1,16 +1,23 @@
 /* =============================================================
    กรอก / แก้ไข / ยื่น ใบขอจัดซื้อ
 
+   หน้าจอแบ่งเป็นสองคอลัมน์
+   · ซ้าย  — ฟอร์มกรอกข้อมูล เรียงตามลำดับที่คนกรอกจริง
+   · ขวา   — ยอดที่ใช้ตัดงบ เส้นทางอนุมัติ และสิ่งที่ยังติดอยู่
+              เพื่อให้รู้ตั้งแต่ต้นว่าทำไมใบนี้ยังปริ้นไม่ได้ ไม่ใช่รู้ตอนกดปุ่มแล้วเด้ง error
+
    กติกาที่บังคับในหน้านี้
    · ปริ้นแล้วล็อก — แก้ต่อไม่ได้ ต้องออกฉบับแก้ไข
    · ใบสินทรัพย์ต้องมีรหัสสินทรัพย์ครบก่อนจึงปริ้นได้
    · รายการที่เป็นหมวด IT จะติดธง "ต้องผ่านฝ่าย IT" ให้เอง
    ============================================================= */
 import {
-  cfg, sb, requireSession, me, can, appbar, master, getPR, createDraft, savePR,
+  cfg, requireSession, me, can, appbar, master, getPR, createDraft, savePR,
   saveItems, saveAssets, submitPR, revisePR, setITOpinion, money,
   esc, baht, isAsset, DOC_TYPE_LABEL, STATUS_LABEL, REASON_LABEL, KIND_LABEL, PAY_LABEL
 } from './db.js';
+
+const EXEC_TITLE = { ceo: 'ประธานเจ้าหน้าที่บริหาร', coo: 'ประธานเจ้าหน้าที่สายงานปฏิบัติการ' };
 
 await requireSession();
 const profile = await me();
@@ -62,6 +69,8 @@ function blankItem() {
   return { name: '', detail: '', category_id: '', qty: 1, unit_price: 0, note: '' };
 }
 
+const dis = ok => ok ? '' : 'disabled';
+
 /* ---------------- วาดหน้า ---------------- */
 
 render();
@@ -73,162 +82,186 @@ function render() {
   main.innerHTML = `
     <div class="pagehead">
       <div>
-        <h1>${pr.doc_no ? esc(pr.doc_no) : 'ใบขอจัดซื้อใหม่'}${pr.rev ? ` <span class="pill st-mute">Rev.${pr.rev}</span>` : ''}</h1>
-        <p class="lead"><span class="pill ${st.c}">${esc(st.t)}</span>
-          ${pr.doc_no ? '' : ' เลขที่เอกสารจะออกให้อัตโนมัติเมื่อกดยื่น'}</p>
+        <div class="eyebrow">${pr.doc_no ? 'ใบขอจัดซื้อ' : 'ใบขอจัดซื้อใหม่'}</div>
+        <h1 class="${pr.doc_no ? 'docno' : ''}">${
+          pr.doc_no ? esc(pr.doc_no) : 'ยังไม่ได้ยื่น'}${
+          pr.rev ? ` <span class="pill st-mute">Rev.${pr.rev}</span>` : ''}</h1>
+        <p class="lead" style="margin-top:7px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <span class="pill ${st.c}">${esc(st.t)}</span>
+          ${pr.doc_no ? '' : '<span>เลขที่เอกสารจะออกให้อัตโนมัติเมื่อกดยื่น</span>'}
+        </p>
       </div>
       <span class="grow"></span>
       <a class="btn quiet" href="index.html">← กลับรายการ</a>
     </div>
 
     <div id="msg"></div>
-    ${locked ? `<div class="notebox">ใบนี้ถูกล็อกแล้ว (${esc(st.t)}) — แก้เนื้อหาไม่ได้
-      ${can(profile, 'admin') || isOwner ? 'ถ้าต้องแก้ ให้กด “ออกฉบับแก้ไข” ด้านล่าง' : ''}</div>` : ''}
+    ${locked ? `<div class="notebox"><b>ใบนี้ถูกล็อกแล้ว (${esc(st.t)})</b> — แก้เนื้อหาไม่ได้
+      ${isOwner || can(profile, 'admin') ? 'ถ้าต้องแก้ ให้กด “ออกฉบับแก้ไข” ที่แถบด้านล่าง' : ''}</div>` : ''}
 
-    <!-- ---------- หัวใบ ---------- -->
-    <section class="card">
-      <h2>ข้อมูลใบ</h2>
-      <div class="grid g2">
-        <label><span class="req">ประเภทเอกสาร</span>
-          <select id="doc_type" ${canEdit ? '' : 'disabled'}>
-            ${Object.entries(DOC_TYPE_LABEL).map(([k, t]) =>
-              `<option value="${k}" ${pr.doc_type === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}
-          </select></label>
-        <label><span>ลักษณะคำขอ</span>
-          <select id="request_kind" ${canEdit ? '' : 'disabled'}>
-            ${Object.entries(KIND_LABEL).map(([k, t]) =>
-              `<option value="${k}" ${pr.request_kind === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}
-          </select></label>
-        <label><span class="req">ฝ่ายผู้ขอ</span>
-          <select id="department_id" ${canEdit ? '' : 'disabled'}>
-            ${departments.map(d =>
-              `<option value="${d.id}" ${pr.department_id === d.id ? 'selected' : ''}>${esc(d.code)} — ${esc(d.name)} (${d.approver.toUpperCase()} อนุมัติ)</option>`).join('')}
-          </select></label>
-        <label><span class="req">สาขา/หน่วยงานที่ใช้ของ</span>
-          <select id="branch_id" ${canEdit ? '' : 'disabled'}>
-            ${branches.map(b =>
-              `<option value="${b.id}" ${pr.branch_id === b.id ? 'selected' : ''}>${esc(b.code)} — ${esc(b.name)}</option>`).join('')}
-          </select></label>
-        <label><span>Division Cost Center</span>
-          <input id="cost_center" value="${esc(pr.cost_center || '')}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span class="req">วัน/เดือน/ปี</span>
-          <input type="date" id="doc_date" value="${esc(pr.doc_date)}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>ชื่อผู้ขายที่แนะนำ (ถ้ามี)</span>
-          <input id="suggested_vendor" value="${esc(pr.suggested_vendor || '')}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>เหตุผลในการขอซื้อ</span>
-          <select id="reason" ${canEdit ? '' : 'disabled'}>
-            ${Object.entries(REASON_LABEL).map(([k, t]) =>
-              `<option value="${k}" ${pr.reason === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}
-          </select></label>
-        <label id="reason_other_wrap" style="${pr.reason === 'other' ? '' : 'display:none'}">
-          <span>ระบุเหตุผล</span>
-          <input id="reason_other" value="${esc(pr.reason_other || '')}" ${canEdit ? '' : 'disabled'}></label>
-      </div>
-    </section>
+    <div class="layout">
+      <div class="col-main">
 
-    <!-- ---------- รายการ ---------- -->
-    <section class="card">
-      <h2>รายการที่ขอซื้อ</h2>
-      <div class="tablebox">
-        <table class="items">
-          <thead>
-            <tr>
-              <th style="width:34px">#</th>
-              <th>ชื่อและรายละเอียด</th>
-              <th style="width:150px">หมวด</th>
-              <th class="num" style="width:78px">จำนวน</th>
-              <th class="num" style="width:110px">ราคา/หน่วย</th>
-              <th class="num" style="width:110px">จำนวนเงิน</th>
-              <th style="width:120px">หมายเหตุ</th>
-              <th style="width:40px"></th>
-            </tr>
-          </thead>
-          <tbody id="itemrows"></tbody>
-        </table>
-      </div>
-      ${canEdit ? '<div class="actions"><button class="btn quiet" id="additem" type="button">+ เพิ่มรายการ</button></div>' : ''}
+        <!-- ---------- 1. ข้อมูลใบ ---------- -->
+        <section class="card">
+          <header><span class="n">1</span><h2>ข้อมูลใบ</h2></header>
+          <div class="body">
+            <div class="grid g2">
+              <label><span class="req">ประเภทเอกสาร</span>
+                <select id="doc_type" ${dis(canEdit)}>
+                  ${Object.entries(DOC_TYPE_LABEL).map(([k, t]) =>
+                    `<option value="${k}" ${pr.doc_type === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+                </select></label>
+              <label><span>ลักษณะคำขอ</span>
+                <select id="request_kind" ${dis(canEdit)}>
+                  ${Object.entries(KIND_LABEL).map(([k, t]) =>
+                    `<option value="${k}" ${pr.request_kind === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+                </select></label>
+              <label><span class="req">ฝ่ายผู้ขอ</span>
+                <select id="department_id" ${dis(canEdit)}>
+                  ${departments.map(d => `<option value="${d.id}" ${pr.department_id === d.id ? 'selected' : ''}>${
+                    esc(d.code)} — ${esc(d.name)}</option>`).join('')}
+                </select></label>
+              <label><span class="req">สาขา/หน่วยงานที่ใช้ของ</span>
+                <select id="branch_id" ${dis(canEdit)}>
+                  ${branches.map(b => `<option value="${b.id}" ${pr.branch_id === b.id ? 'selected' : ''}>${
+                    esc(b.code)} — ${esc(b.name)}</option>`).join('')}
+                </select></label>
+              <label><span>Division Cost Center</span>
+                <input id="cost_center" value="${esc(pr.cost_center || '')}" ${dis(canEdit)}></label>
+              <label><span class="req">วัน/เดือน/ปี</span>
+                <input type="date" id="doc_date" value="${esc(pr.doc_date)}" ${dis(canEdit)}></label>
+              <label><span>ชื่อผู้ขายที่แนะนำ (ถ้ามี)</span>
+                <input id="suggested_vendor" value="${esc(pr.suggested_vendor || '')}" ${dis(canEdit)}></label>
+              <label><span>เหตุผลในการขอซื้อ</span>
+                <select id="reason" ${dis(canEdit)}>
+                  ${Object.entries(REASON_LABEL).map(([k, t]) =>
+                    `<option value="${k}" ${pr.reason === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+                </select></label>
+              <label id="reason_other_wrap" style="${pr.reason === 'other' ? '' : 'display:none'}">
+                <span>ระบุเหตุผล</span>
+                <input id="reason_other" value="${esc(pr.reason_other || '')}" ${dis(canEdit)}></label>
+            </div>
+          </div>
+        </section>
 
-      <div class="grid g3" style="margin-top:16px">
-        <label><span>ส่วนลด (บาท)</span>
-          <input type="number" step="0.01" min="0" id="discount" value="${Number(pr.discount) || 0}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>VAT (%)</span>
-          <input type="number" step="0.01" min="0" id="vat_rate" value="${Number(pr.vat_rate)}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>หักภาษี ณ ที่จ่าย (%)</span>
-          <input type="number" step="0.01" min="0" id="wht_rate" value="${Number(pr.wht_rate)}" ${canEdit ? '' : 'disabled'}></label>
+        <!-- ---------- 2. รายการ ---------- -->
+        <section class="card">
+          <header><span class="n">2</span><h2>รายการที่ขอซื้อ</h2>
+            <span class="hint">ราคาต่อหน่วยเป็นช่องบังคับ — ผู้บริหารต้องเซ็นยอดจริง</span></header>
+          <div class="body tight">
+            <div class="tablebox" style="margin-top:6px">
+              <table class="items">
+                <thead>
+                  <tr>
+                    <th style="width:34px">#</th>
+                    <th>ชื่อและรายละเอียด</th>
+                    <th style="width:152px">หมวด</th>
+                    <th class="num" style="width:76px">จำนวน</th>
+                    <th class="num" style="width:112px">ราคา/หน่วย</th>
+                    <th class="num" style="width:112px">จำนวนเงิน</th>
+                    <th style="width:118px">หมายเหตุ</th>
+                    <th style="width:42px"></th>
+                  </tr>
+                </thead>
+                <tbody id="itemrows"></tbody>
+              </table>
+            </div>
+            ${canEdit ? '<div class="actions" style="margin-top:12px"><button class="btn quiet small" id="additem" type="button">+ เพิ่มรายการ</button></div>' : ''}
+
+            <div class="grid g3" style="margin-top:18px;max-width:560px">
+              <label><span>ส่วนลด (บาท)</span>
+                <input type="number" step="0.01" min="0" id="discount" value="${Number(pr.discount) || 0}" ${dis(canEdit)}></label>
+              <label><span>VAT (%)</span>
+                <input type="number" step="0.01" min="0" id="vat_rate" value="${Number(pr.vat_rate)}" ${dis(canEdit)}></label>
+              <label><span>หักภาษี ณ ที่จ่าย (%)</span>
+                <input type="number" step="0.01" min="0" id="wht_rate" value="${Number(pr.wht_rate)}" ${dis(canEdit)}></label>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- 3. ฝ่าย IT ---------- -->
+        <section class="card">
+          <header><span class="n">3</span><h2>ความเห็นจากฝ่าย IT</h2>
+            <span class="hint">อุปกรณ์ IT และกึ่ง IT ต้องผ่านฝ่าย IT ทุกครั้ง</span></header>
+          <div class="body">
+            <div class="radios" style="margin-bottom:14px">
+              <label><input type="checkbox" id="needs_it" ${pr.needs_it ? 'checked' : ''} ${dis(canEdit)}>
+                รายการนี้เป็นอุปกรณ์ IT / กึ่ง IT</label>
+            </div>
+            <div id="itpanel"></div>
+          </div>
+        </section>
+
+        <!-- ---------- 4. สินทรัพย์ ---------- -->
+        <section class="card" id="assetcard" style="${asset ? '' : 'display:none'}">
+          <header><span class="n">4</span><h2>ส่วนงานสินทรัพย์</h2>
+            <span class="hint">${canCode ? 'รหัสมาจากทะเบียนใน SAP ห้ามซ้ำ' : 'รหัสกรอกได้เฉพาะเจ้าหน้าที่ฝ่ายบัญชี'}</span></header>
+          <div class="body tight">
+            <div class="tablebox" style="margin-top:6px">
+              <table class="items">
+                <thead>
+                  <tr>
+                    <th style="width:34px">#</th>
+                    <th style="width:196px">รหัสสินทรัพย์ (จาก SAP)</th>
+                    <th>ชื่อสินทรัพย์</th>
+                    <th class="num" style="width:122px">มูลค่า</th>
+                    <th style="width:42px"></th>
+                  </tr>
+                </thead>
+                <tbody id="assetrows"></tbody>
+              </table>
+            </div>
+            <div class="actions" style="margin-top:12px">
+              ${canEdit || canCode ? '<button class="btn quiet small" id="addasset" type="button">+ เพิ่มสินทรัพย์</button>' : ''}
+              ${canEdit ? '<button class="btn quiet small" id="fromitems" type="button">ดึงจากรายการที่ขอซื้อ</button>' : ''}
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- 5. การจ่ายเงิน ---------- -->
+        <section class="card">
+          <header><span class="n">5</span><h2>รายละเอียดการจ่ายเงิน</h2>
+            <span class="hint">เก็บเป็นข้อมูลบนใบเท่านั้น</span></header>
+          <div class="body">
+            <div class="radios" style="margin-bottom:16px">
+              ${Object.entries(PAY_LABEL).map(([k, t]) => `
+                <label><input type="radio" name="pay" value="${k}" ${
+                  pr.payment_method === k ? 'checked' : ''} ${dis(canEdit)}> ${esc(t)}</label>`).join('')}
+            </div>
+            <div class="grid g2">
+              <label><span>ผู้รับเงินคืน</span>
+                <input id="refund_payee" value="${esc(pr.refund_payee || '')}" ${dis(canEdit)}></label>
+              <label><span>ธนาคาร / เลขบัญชี</span>
+                <input id="refund_bank" value="${esc(pr.refund_bank || '')}" ${dis(canEdit)}></label>
+              <label><span>เลขที่เอกสารเบิกทดรองจ่าย</span>
+                <input id="advance_doc_no" value="${esc(pr.advance_doc_no || '')}" ${dis(canEdit)}></label>
+              <label><span>รอช่างมาติดตั้งวันที่</span>
+                <input type="date" id="install_date" value="${esc(pr.install_date || '')}" ${dis(canEdit)}></label>
+              <label><span>ชื่อผู้รับมอบงาน</span>
+                <input id="receiver_name" value="${esc(pr.receiver_name || '')}" ${dis(canEdit)}></label>
+            </div>
+            <div class="radios" style="margin-top:14px">
+              <label><input type="checkbox" id="already_at_branch" ${pr.already_at_branch ? 'checked' : ''} ${dis(canEdit)}>
+                สินค้า / สินทรัพย์ / อุปกรณ์ ณ ปัจจุบันอยู่ที่สาขาแล้ว</label>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div class="totals" id="totals"></div>
-    </section>
+      <aside class="rail" id="rail"></aside>
+    </div>
 
-    <!-- ---------- ฝ่าย IT ---------- -->
-    <section class="card">
-      <h2>ฝ่าย IT</h2>
-      <div class="radios" style="margin-bottom:12px">
-        <label><input type="checkbox" id="needs_it" ${pr.needs_it ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
-          รายการนี้เป็นอุปกรณ์ IT / กึ่ง IT — ต้องผ่านความเห็นชอบจากฝ่าย IT</label>
+    <div class="actionbar">
+      <div class="inner">
+        <span class="sum" id="barsum"></span>
+        ${canEdit ? '<button class="btn quiet" id="save" type="button">บันทึกร่าง</button>' : ''}
+        ${canEdit && !pr.doc_no ? '<button class="btn" id="submit" type="button">ยื่น — ออกเลขที่เอกสาร</button>' : ''}
+        ${pr.doc_no && !locked ? '<button class="btn" id="print" type="button">ตรวจและพิมพ์ใบ</button>' : ''}
+        ${pr.status === 'printed' ? `<a class="btn quiet" href="print.html?id=${pr.id}">ดูใบที่พิมพ์</a>` : ''}
+        ${locked && (isOwner || can(profile, 'admin')) && pr.status === 'printed'
+          ? '<button class="btn danger" id="revise" type="button">ออกฉบับแก้ไข</button>' : ''}
       </div>
-      <div id="itpanel"></div>
-    </section>
-
-    <!-- ---------- สินทรัพย์ ---------- -->
-    <section class="card" id="assetcard" style="${asset ? '' : 'display:none'}">
-      <h2>ส่วนงานสินทรัพย์</h2>
-      <p class="lead" style="margin-bottom:12px">
-        รหัสสินทรัพย์มาจากทะเบียนใน SAP ห้ามซ้ำ และ<b>ต้องกรอกครบก่อนจึงจะปริ้นใบได้</b>
-        ${canCode ? '' : ' — ช่องรหัสกรอกได้เฉพาะเจ้าหน้าที่ฝ่ายบัญชี'}</p>
-      <div class="tablebox">
-        <table class="items">
-          <thead>
-            <tr>
-              <th style="width:34px">#</th>
-              <th style="width:190px">รหัสสินทรัพย์ (จาก SAP)</th>
-              <th>ชื่อสินทรัพย์</th>
-              <th class="num" style="width:120px">มูลค่า</th>
-              <th style="width:40px"></th>
-            </tr>
-          </thead>
-          <tbody id="assetrows"></tbody>
-        </table>
-      </div>
-      <div class="actions">
-        ${canEdit || canCode ? '<button class="btn quiet" id="addasset" type="button">+ เพิ่มสินทรัพย์</button>' : ''}
-        ${canEdit ? '<button class="btn quiet" id="fromitems" type="button">ดึงจากรายการที่ขอซื้อ</button>' : ''}
-      </div>
-    </section>
-
-    <!-- ---------- การจ่ายเงิน ---------- -->
-    <section class="card">
-      <h2>รายละเอียดการจ่ายเงิน</h2>
-      <div class="radios" style="margin-bottom:12px">
-        ${Object.entries(PAY_LABEL).map(([k, t]) => `
-          <label><input type="radio" name="pay" value="${k}" ${pr.payment_method === k ? 'checked' : ''} ${canEdit ? '' : 'disabled'}> ${esc(t)}</label>`).join('')}
-      </div>
-      <div class="grid g2">
-        <label><span>ผู้รับเงินคืน</span>
-          <input id="refund_payee" value="${esc(pr.refund_payee || '')}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>ธนาคาร / เลขบัญชี</span>
-          <input id="refund_bank" value="${esc(pr.refund_bank || '')}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>เลขที่เอกสารเบิกทดรองจ่าย</span>
-          <input id="advance_doc_no" value="${esc(pr.advance_doc_no || '')}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>รอช่างมาติดตั้งวันที่</span>
-          <input type="date" id="install_date" value="${esc(pr.install_date || '')}" ${canEdit ? '' : 'disabled'}></label>
-        <label><span>ชื่อผู้รับมอบงาน</span>
-          <input id="receiver_name" value="${esc(pr.receiver_name || '')}" ${canEdit ? '' : 'disabled'}></label>
-      </div>
-      <div class="radios" style="margin-top:12px">
-        <label><input type="checkbox" id="already_at_branch" ${pr.already_at_branch ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
-          สินค้า / สินทรัพย์ / อุปกรณ์ ณ ปัจจุบันอยู่ที่สาขาแล้ว</label>
-      </div>
-    </section>
-
-    <div class="actions">
-      ${canEdit ? '<button class="btn quiet" id="save" type="button">บันทึกร่าง</button>' : ''}
-      ${canEdit && !pr.doc_no ? '<button class="btn" id="submit" type="button">ยื่น (ออกเลขที่เอกสาร)</button>' : ''}
-      ${pr.doc_no && !locked ? '<button class="btn" id="print" type="button">ตรวจและพิมพ์ใบ</button>' : ''}
-      ${pr.status === 'printed' ? `<a class="btn quiet" href="print.html?id=${pr.id}">ดูใบที่พิมพ์</a>` : ''}
-      <span class="grow"></span>
-      ${locked && (isOwner || can(profile, 'admin')) && pr.status === 'printed'
-        ? '<button class="btn danger" id="revise" type="button">ออกฉบับแก้ไข (Rev.)</button>' : ''}
     </div>`;
 
   drawItems();
@@ -238,28 +271,28 @@ function render() {
   wire();
 }
 
-/* ---------------- รายการสินค้า ---------------- */
+/* ---------------- ตารางรายการ ---------------- */
 
 function drawItems() {
-  const tb = document.getElementById('itemrows');
-  tb.innerHTML = items.map((it, i) => `
+  document.getElementById('itemrows').innerHTML = items.map((it, i) => `
     <tr data-i="${i}">
       <td>${i + 1}</td>
       <td>
-        <input class="f-name" value="${esc(it.name)}" placeholder="ชื่อสิ่งที่ต้องการ" ${canEdit ? '' : 'disabled'}>
+        <input class="f-name" value="${esc(it.name)}" placeholder="ชื่อสิ่งที่ต้องการ" ${dis(canEdit)}>
         <input class="f-detail" value="${esc(it.detail || '')}" placeholder="รายละเอียด / สเปก (ไม่บังคับ)"
-               style="margin-top:4px;font-size:12.5px" ${canEdit ? '' : 'disabled'}>
+               style="margin-top:4px;font-size:12.5px" ${dis(canEdit)}>
       </td>
-      <td><select class="f-cat" ${canEdit ? '' : 'disabled'}>
+      <td><select class="f-cat" ${dis(canEdit)}>
         <option value="">— ไม่ระบุ —</option>
         ${categories.map(c => `<option value="${c.id}" ${it.category_id === c.id ? 'selected' : ''}>${
-          esc(c.name)}${c.is_it ? ' ⟨IT⟩' : ''}</option>`).join('')}
+          esc(c.name)}${c.is_it ? ' · IT' : ''}</option>`).join('')}
       </select></td>
-      <td><input class="f-qty" type="number" step="0.01" min="0" value="${Number(it.qty) || 0}" ${canEdit ? '' : 'disabled'}></td>
-      <td><input class="f-price" type="number" step="0.01" min="0" value="${Number(it.unit_price) || 0}" ${canEdit ? '' : 'disabled'}></td>
+      <td><input class="f-qty" type="number" step="0.01" min="0" value="${Number(it.qty) || 0}" ${dis(canEdit)}></td>
+      <td><input class="f-price" type="number" step="0.01" min="0" value="${Number(it.unit_price) || 0}" ${dis(canEdit)}></td>
       <td class="num f-amt">${baht((Number(it.qty) || 0) * (Number(it.unit_price) || 0))}</td>
-      <td><input class="f-note" value="${esc(it.note || '')}" ${canEdit ? '' : 'disabled'}></td>
-      <td>${canEdit && items.length > 1 ? '<button class="btn quiet f-del" type="button" title="ลบแถว">✕</button>' : ''}</td>
+      <td><input class="f-note" value="${esc(it.note || '')}" ${dis(canEdit)}></td>
+      <td>${canEdit && items.length > 1
+        ? '<button class="btn quiet small f-del" type="button" title="ลบแถวนี้" aria-label="ลบแถวนี้">✕</button>' : ''}</td>
     </tr>`).join('');
 }
 
@@ -267,17 +300,18 @@ function drawAssets() {
   const tb = document.getElementById('assetrows');
   if (!tb) return;
   if (!assets.length) {
-    tb.innerHTML = '<tr><td colspan="5" class="empty" style="padding:22px">ยังไม่มีรายการสินทรัพย์</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="empty" style="padding:26px">ยังไม่มีรายการสินทรัพย์</td></tr>';
     return;
   }
   tb.innerHTML = assets.map((a, i) => `
     <tr data-i="${i}">
       <td>${i + 1}</td>
       <td><input class="a-code" value="${esc(a.asset_code || '')}" placeholder="เช่น CO1026090088"
-                 style="font-family:var(--mono)" ${canCode ? '' : 'disabled'}></td>
-      <td><input class="a-name" value="${esc(a.asset_name || '')}" ${canEdit || canCode ? '' : 'disabled'}></td>
-      <td><input class="a-val" type="number" step="0.01" min="0" value="${Number(a.asset_value) || 0}" ${canEdit || canCode ? '' : 'disabled'}></td>
-      <td>${canEdit || canCode ? '<button class="btn quiet a-del" type="button" title="ลบแถว">✕</button>' : ''}</td>
+                 style="font-family:var(--mono)" ${dis(canCode)}></td>
+      <td><input class="a-name" value="${esc(a.asset_name || '')}" ${dis(canEdit || canCode)}></td>
+      <td><input class="a-val" type="number" step="0.01" min="0" value="${Number(a.asset_value) || 0}" ${dis(canEdit || canCode)}></td>
+      <td>${canEdit || canCode
+        ? '<button class="btn quiet small a-del" type="button" title="ลบแถวนี้" aria-label="ลบแถวนี้">✕</button>' : ''}</td>
     </tr>`).join('');
 }
 
@@ -286,22 +320,103 @@ function drawIT() {
   if (!pr.needs_it) { el.innerHTML = '<p class="lead">ใบนี้ไม่ต้องผ่านฝ่าย IT</p>'; return; }
   if (pr.it_opinion) {
     const ok = pr.it_opinion === 'approve';
-    el.innerHTML = `<div class="${ok ? 'okbox' : 'errbox'}">
-      ฝ่าย IT <b>${ok ? 'เห็นชอบ' : 'ไม่เห็นชอบ'}</b>
-      ${pr.it_note ? ` — ${esc(pr.it_note)}` : ''}</div>`;
-    if (canIT) el.innerHTML += '<button class="btn quiet" id="itredo" type="button">แก้ความเห็น</button>';
+    el.innerHTML = `<div class="${ok ? 'okbox' : 'errbox'}" style="margin-bottom:0">
+      ฝ่าย IT <b>${ok ? 'เห็นชอบ' : 'ไม่เห็นชอบ'}</b>${pr.it_note ? ` — ${esc(pr.it_note)}` : ''}</div>`;
+    if (canIT) el.innerHTML += '<div class="actions" style="margin-top:12px"><button class="btn quiet small" id="itredo" type="button">แก้ความเห็น</button></div>';
     return;
   }
-  if (!canIT) { el.innerHTML = '<div class="notebox">รอฝ่าย IT ให้ความเห็น — ใบนี้ยังพิมพ์ไม่ได้จนกว่าฝ่าย IT จะตอบ</div>'; return; }
+  if (!canIT) {
+    el.innerHTML = '<div class="notebox" style="margin-bottom:0">รอฝ่าย IT ให้ความเห็น — ใบนี้ยังพิมพ์ไม่ได้จนกว่าฝ่าย IT จะตอบ</div>';
+    return;
+  }
   el.innerHTML = `
     <div class="grid">
       <label><span>รายละเอียดเพิ่มเติมจากฝ่าย IT</span>
         <textarea id="it_note">${esc(pr.it_note || '')}</textarea></label>
-      <div class="actions" style="margin-top:0">
+      <div class="actions">
         <button class="btn" id="itok" type="button">เห็นชอบ</button>
         <button class="btn danger" id="itno" type="button">ไม่เห็นชอบ</button>
       </div>
     </div>`;
+}
+
+/* ---------------- แถบสรุปด้านขวา ---------------- */
+
+/** สิ่งที่ต้องครบก่อนจึงจะพิมพ์ใบได้ — บอกล่วงหน้า ไม่ใช่รอให้กดปุ่มแล้วเด้ง error */
+function blockers() {
+  const good = items.filter(i => i.name.trim());
+  const list = [
+    { ok: good.length > 0, t: 'มีรายการที่ขอซื้ออย่างน้อย 1 รายการ' },
+    { ok: good.length > 0 && good.every(i => Number(i.unit_price) > 0), t: 'กรอกราคาต่อหน่วยครบทุกรายการ' },
+    { ok: Boolean(pr.branch_id), t: 'ระบุสาขา/หน่วยงานที่ใช้ของ' }
+  ];
+  if (pr.needs_it) list.push({ ok: Boolean(pr.it_opinion), t: 'ฝ่าย IT ให้ความเห็นแล้ว' });
+  if (isAsset(pr.doc_type)) {
+    const rows = assets.filter(a => a.asset_name?.trim());
+    list.push({ ok: rows.length > 0, t: 'มีรายการในส่วนงานสินทรัพย์' });
+    list.push({ ok: rows.length > 0 && rows.every(a => a.asset_code?.trim()), t: 'กรอกรหัสสินทรัพย์จาก SAP ครบทุกรายการ' });
+  }
+  return list;
+}
+
+function drawRail(m) {
+  const dept = departments.find(d => d.id === pr.department_id);
+  const execRole = dept?.approver || 'coo';
+  const checks = blockers();
+  const left = checks.filter(c => !c.ok).length;
+
+  // เส้นทางอนุมัติ — ขั้นที่ทำในแอปกับขั้นที่เซ็นบนกระดาษ ต่างกันชัดเจน
+  const route = [{ who: 'ผู้ขอซื้อ', sub: profile.full_name, done: true, paper: 'เซ็น' }];
+  if (isAsset(pr.doc_type)) route.push({ who: 'ผู้ดูแลสินทรัพย์', sub: '', paper: 'แอป + เซ็น' });
+  route.push({ who: 'ผู้จัดการฝ่าย', sub: dept?.name || '', paper: 'เซ็น' });
+  if (isAsset(pr.doc_type)) {
+    route.push({
+      who: 'บัญชี — ออกรหัสสินทรัพย์', sub: '', paper: 'แอป + เซ็น',
+      done: assets.length > 0 && assets.every(a => a.asset_code?.trim())
+    });
+  }
+  route.push({ who: execRole.toUpperCase(), sub: EXEC_TITLE[execRole], paper: 'เซ็น' });
+  if (isAsset(pr.doc_type)) route.push({ who: 'COO — ส่วนสินทรัพย์', sub: EXEC_TITLE.coo, paper: 'เซ็น' });
+  route.push({ who: 'จัดซื้อเปิด PO', sub: '', paper: '' });
+
+  const firstOpen = route.findIndex(r => !r.done);
+
+  document.getElementById('rail').innerHTML = `
+    <div class="card"><div class="body">
+      <h3>ยอดที่ใช้ตัดงบ</h3>
+      <div class="bignum">
+        <b>${baht(m.net)}</b>
+        <small>บาท — ยอดหลังส่วนลด ก่อน VAT ไม่หักภาษี ณ ที่จ่าย</small>
+      </div>
+      <div class="minitotals">
+        <span>รวมเป็นเงิน</span><span>${baht(m.subtotal)}</span>
+        <span>หักส่วนลด</span><span>${m.discount ? '−' + baht(m.discount) : '—'}</span>
+        <span>VAT ${Number(pr.vat_rate)}%</span><span>${baht(m.vat)}</span>
+        <span>หักภาษี ณ ที่จ่าย ${Number(pr.wht_rate)}%</span><span>${m.wht ? '−' + baht(m.wht) : '—'}</span>
+        <span style="font-weight:600;color:var(--ink)">ยอดรวม</span>
+        <span style="font-weight:600">${baht(m.total)}</span>
+      </div>
+    </div></div>
+
+    <div class="card"><div class="body">
+      <h3>ก่อนพิมพ์ใบ ${left ? `— เหลือ ${left} ข้อ` : '— ครบแล้ว'}</h3>
+      <ul class="checks">
+        ${checks.map(c => `<li class="${c.ok ? 'ok' : 'no'}"><i>${c.ok ? '✓' : '✕'}</i><span>${esc(c.t)}</span></li>`).join('')}
+      </ul>
+    </div></div>
+
+    <div class="card"><div class="body">
+      <h3>เส้นทางอนุมัติ</h3>
+      <ol class="route">
+        ${route.map((r, i) => `
+          <li class="${r.done ? 'done' : i === firstOpen ? 'now' : ''}">
+            <span class="dot">${r.done ? '✓' : i + 1}</span>
+            <span class="who">${esc(r.who)}
+              ${r.sub ? `<small>${esc(r.sub)}</small>` : ''}
+              ${r.paper ? `<span class="paper">${esc(r.paper)}</span>` : ''}</span>
+          </li>`).join('')}
+      </ol>
+    </div></div>`;
 }
 
 /* ---------------- คำนวณยอด ---------------- */
@@ -310,22 +425,19 @@ function recalc() {
   const m = money(pr, items);
   const threshold = cfg.PR_THRESHOLD ?? 500;
   const split = cfg.ASSET_SPLIT ?? 5000;
-  document.getElementById('totals').innerHTML = `
-    <dl>
-      <dt>รวมเป็นเงิน</dt><dd>${baht(m.subtotal)}</dd>
-      <dt>หักส่วนลด</dt><dd>${m.discount ? '−' + baht(m.discount) : '—'}</dd>
-      <dt>ยอดหลังส่วนลด</dt><dd>${baht(m.net)}</dd>
-      <dt>VAT ${Number(pr.vat_rate)}%</dt><dd>${baht(m.vat)}</dd>
-      <dt>หักภาษี ณ ที่จ่าย ${Number(pr.wht_rate)}%</dt><dd>${m.wht ? '−' + baht(m.wht) : '—'}</dd>
-      <div class="grand" style="display:contents"><dt>ยอดรวม</dt><dd>${baht(m.total)}</dd></div>
-      <span class="hint">ยอดที่ใช้ตัดงบคือ <b>${baht(m.net)}</b> บาท (ก่อน VAT ไม่หักภาษี ณ ที่จ่าย)</span>
-      ${m.net > 0 && m.net <= threshold
-        ? `<span class="hint" style="color:var(--amber)">ยอดไม่เกิน ${baht(threshold)} บาท — ตามระเบียบยังไม่ต้องเปิดใบ PR</span>`
-        : ''}
-      ${isAsset(pr.doc_type)
-        ? `<span class="hint">มูลค่า ${m.net >= split ? '≥' : '<'} ${baht(split)} → ควรเป็น<b>${
-            m.net >= split ? 'สินทรัพย์ชุดใหญ่' : 'สินทรัพย์ชุดเล็ก'}</b></span>` : ''}
-    </dl>`;
+
+  drawRail(m);
+
+  const notes = [];
+  if (m.net > 0 && m.net <= threshold)
+    notes.push(`ยอดไม่เกิน ${baht(threshold)} บาท — ตามระเบียบยังไม่ต้องเปิดใบ PR`);
+  if (isAsset(pr.doc_type))
+    notes.push(`มูลค่า ${m.net >= split ? '≥' : '<'} ${baht(split)} → ควรเป็น${
+      m.net >= split ? 'สินทรัพย์ชุดใหญ่' : 'สินทรัพย์ชุดเล็ก'}`);
+
+  document.getElementById('barsum').innerHTML =
+    `ยอดที่ใช้ตัดงบ <b>${baht(m.net)}</b> บาท${
+      notes.length ? ` · <span style="color:var(--amber)">${esc(notes.join(' · '))}</span>` : ''}`;
 }
 
 /* ---------------- ผูก event ---------------- */
@@ -334,8 +446,9 @@ function wire() {
   const bind = (elId, key, cast = v => v) => {
     const el = document.getElementById(elId);
     if (!el) return;
-    el.addEventListener('input', () => { pr[key] = cast(el.type === 'checkbox' ? el.checked : el.value); afterChange(key); });
-    el.addEventListener('change', () => { pr[key] = cast(el.type === 'checkbox' ? el.checked : el.value); afterChange(key); });
+    const handler = () => { pr[key] = cast(el.type === 'checkbox' ? el.checked : el.value); afterChange(key); };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
   };
 
   ['request_kind', 'department_id', 'branch_id', 'cost_center', 'doc_date', 'suggested_vendor',
@@ -350,7 +463,8 @@ function wire() {
     r.addEventListener('change', () => { pr.payment_method = r.value; }));
 
   /* -- รายการ -- */
-  document.getElementById('itemrows').addEventListener('input', e => {
+  const rows = document.getElementById('itemrows');
+  rows.addEventListener('input', e => {
     const tr = e.target.closest('tr'); if (!tr) return;
     const it = items[+tr.dataset.i];
     if (e.target.classList.contains('f-name'))   it.name = e.target.value;
@@ -361,13 +475,12 @@ function wire() {
     tr.querySelector('.f-amt').textContent = baht((Number(it.qty) || 0) * (Number(it.unit_price) || 0));
     recalc();
   });
-  document.getElementById('itemrows').addEventListener('change', e => {
+  rows.addEventListener('change', e => {
     if (!e.target.classList.contains('f-cat')) return;
-    const tr = e.target.closest('tr');
-    items[+tr.dataset.i].category_id = e.target.value || null;
+    items[+e.target.closest('tr').dataset.i].category_id = e.target.value || null;
     autoFlagIT();
   });
-  document.getElementById('itemrows').addEventListener('click', e => {
+  rows.addEventListener('click', e => {
     if (!e.target.classList.contains('f-del')) return;
     items.splice(+e.target.closest('tr').dataset.i, 1);
     if (!items.length) items.push(blankItem());
@@ -376,14 +489,16 @@ function wire() {
   document.getElementById('additem')?.addEventListener('click', () => { items.push(blankItem()); render(); });
 
   /* -- สินทรัพย์ -- */
-  document.getElementById('assetrows')?.addEventListener('input', e => {
+  const arows = document.getElementById('assetrows');
+  arows?.addEventListener('input', e => {
     const tr = e.target.closest('tr'); if (!tr || tr.dataset.i === undefined) return;
     const a = assets[+tr.dataset.i];
     if (e.target.classList.contains('a-code')) a.asset_code = e.target.value.trim();
     if (e.target.classList.contains('a-name')) a.asset_name = e.target.value;
     if (e.target.classList.contains('a-val'))  a.asset_value = Number(e.target.value);
+    recalc();
   });
-  document.getElementById('assetrows')?.addEventListener('click', e => {
+  arows?.addEventListener('click', e => {
     if (!e.target.classList.contains('a-del')) return;
     assets.splice(+e.target.closest('tr').dataset.i, 1);
     render();
@@ -401,7 +516,7 @@ function wire() {
   /* -- ฝ่าย IT -- */
   document.getElementById('itok')?.addEventListener('click', () => itOpinion('approve'));
   document.getElementById('itno')?.addEventListener('click', () => itOpinion('reject'));
-  document.getElementById('itredo')?.addEventListener('click', () => { pr.it_opinion = null; drawIT(); wire(); });
+  document.getElementById('itredo')?.addEventListener('click', () => { pr.it_opinion = null; drawIT(); wire(); recalc(); });
 
   /* -- ปุ่มหลัก -- */
   document.getElementById('save')?.addEventListener('click', () => persist(true));
@@ -437,13 +552,17 @@ function autoFlagIT() {
     drawIT(); wire();
     note('รายการนี้อยู่ในหมวดอุปกรณ์ IT — ระบบติ๊ก “ต้องผ่านฝ่าย IT” ให้อัตโนมัติ', 'notebox');
   }
+  recalc();
 }
 
 /* ---------------- บันทึกและเปลี่ยนสถานะ ---------------- */
 
 const msg = () => document.getElementById('msg');
 function note(text, cls = 'okbox') { msg().innerHTML = `<div class="${cls}">${esc(text)}</div>`; }
-function fail(e) { msg().innerHTML = `<div class="errbox">${esc(e.message || e)}</div>`; }
+function fail(e) {
+  msg().innerHTML = `<div class="errbox">${esc(e.message || e)}</div>`;
+  msg().scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
 function validate() {
   if (!pr.department_id) return 'ยังไม่ได้เลือกฝ่ายผู้ขอ';
@@ -496,9 +615,6 @@ async function doSubmit() {
   try {
     const no = await submitPR(pr.id);
     note(`ยื่นแล้ว — เลขที่เอกสาร ${no}`);
-    pr = await getPR(pr.id);
-    items = pr.items.length ? pr.items : [blankItem()];
-    assets = pr.assets;
     setTimeout(() => location.reload(), 700);
   } catch (e) { fail(e); }
 }
@@ -524,19 +640,19 @@ async function doPrint() {
 async function doRevise() {
   if (!confirm('ออกฉบับแก้ไข: ใบนี้จะถูกปิดเป็น “ถูกแทนที่” และสร้างฉบับใหม่ Rev. ถัดไป ต้องปริ้นและเซ็นใหม่ทั้งใบ')) return;
   try {
-    const newId = await revisePR(pr.id);
-    location.href = `form.html?id=${newId}`;
+    location.href = `form.html?id=${await revisePR(pr.id)}`;
   } catch (e) { fail(e); }
 }
 
 async function itOpinion(kind) {
   if (!pr.id) return fail(new Error('ต้องบันทึกใบก่อนจึงให้ความเห็นได้'));
   try {
-    await setITOpinion(pr.id, kind, document.getElementById('it_note')?.value);
+    const noteText = document.getElementById('it_note')?.value || '';
+    await setITOpinion(pr.id, kind, noteText);
     pr.it_opinion = kind;
-    pr.it_note = document.getElementById('it_note')?.value || '';
+    pr.it_note = noteText;
     pr.it_at = new Date().toISOString();
-    drawIT(); wire();
+    drawIT(); wire(); recalc();
     note(kind === 'approve' ? 'บันทึกความเห็น: เห็นชอบ' : 'บันทึกความเห็น: ไม่เห็นชอบ');
   } catch (e) { fail(e); }
 }

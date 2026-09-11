@@ -76,11 +76,11 @@ function renderTodo(rows) {
 
 function renderList(rows) {
   if (!rows.length) {
-    listEl.innerHTML = '<div class="tablebox"><p class="empty">ยังไม่มีใบขอจัดซื้อ</p></div>';
+    listEl.innerHTML = '<div class="card"><p class="empty">ยังไม่มีใบขอจัดซื้อ — กด “เปิดใบใหม่” เพื่อเริ่ม</p></div>';
     return;
   }
   listEl.innerHTML = `
-    <div class="tablebox">
+    <div class="card"><div class="tablebox" style="border:0">
       <table>
         <thead>
           <tr>
@@ -109,7 +109,7 @@ function renderList(rows) {
           }).join('')}
         </tbody>
       </table>
-    </div>`;
+    </div></div>`;
 
   listEl.querySelectorAll('tr[data-id]').forEach(tr => {
     tr.addEventListener('click', () => { location.href = `form.html?id=${tr.dataset.id}`; });
