@@ -14,12 +14,22 @@ export const EXEC_TITLE = {
   coo: 'ประธานเจ้าหน้าที่สายงานปฏิบัติการ'
 };
 
-// ตารางรายการยาวตามของจริง แล้วเว้นบรรทัดว่างไว้เขียนเพิ่มด้วยมือ 3 บรรทัด
-// ไม่ตรึงไว้ที่ 6 แถวเหมือนฟอร์มกระดาษ — ใบที่มีรายการเดียวจะได้ไม่ลากยาวโดยเปล่าประโยชน์
-const BLANK_ITEM_ROWS = 3;
-// เกิน 9 แถวใบจะไหลไปหน้าที่ 2 ถ้ารายการเยอะถึงขนาดนั้นให้ตัดบรรทัดว่างทิ้งก่อน
-const MAX_ITEM_ROWS   = 9;
-const MIN_ASSET_ROWS  = 7;
+// ทั้งสองตารางยาวตามของจริง แล้วเว้นบรรทัดว่างไว้เขียนเพิ่มด้วยมือตารางละ 3 บรรทัด
+// ไม่ตรึงจำนวนแถวเหมือนฟอร์มกระดาษ — ใบที่มีรายการเดียวจะได้ไม่ลากตารางเปล่ายาวโดยเปล่าประโยชน์
+const BLANK_ROWS = 3;
+
+// สองตารางรวมกันได้ 16 แถวจึงจะยังจบในหน้าเดียว เกินจากนี้ตัดบรรทัดว่างทิ้งก่อนเสมอ
+// (วัดจากของจริง: 18 แถวสูง 1,085px ขณะที่ A4 หลังหักขอบมี 1,070px)
+const ROW_BUDGET = 16;
+
+/** แบ่งโควตาบรรทัดว่างให้สองตาราง โดยตัดของตารางที่ว่างเยอะกว่าออกก่อน */
+function blankRows(itemCount, assetCount) {
+  let items = BLANK_ROWS, assets = BLANK_ROWS;
+  while (itemCount + assetCount + items + assets > ROW_BUDGET && items + assets > 0) {
+    if (assets >= items) assets--; else items--;
+  }
+  return { items, assets };
+}
 
 /* ---------------- ตัวช่วยวาด ---------------- */
 
@@ -62,11 +72,6 @@ export function renderSheet(pr) {
         <td class="c-note fill">${esc(it.note || '')}</td>
       </tr>`);
   });
-  const targetRows = Math.min(itemRows.length + BLANK_ITEM_ROWS,
-                              Math.max(itemRows.length, MAX_ITEM_ROWS));
-  for (let i = itemRows.length; i < targetRows; i++) {
-    itemRows.push('<tr><td class="c-no"></td><td></td><td class="c-qty"></td><td class="c-price"></td><td class="c-amt"></td><td class="c-note"></td></tr>');
-  }
 
   /* ----- บล็อกสินทรัพย์ ----- */
   const assetRows = [];
@@ -79,7 +84,11 @@ export function renderSheet(pr) {
         <td class="c-val num fill">${baht(a.asset_value)}</td>
       </tr>`);
   });
-  for (let i = assetRows.length; i < MIN_ASSET_ROWS; i++) {
+  const blanks = blankRows(itemRows.length, assetRows.length);
+  for (let i = 0; i < blanks.items; i++) {
+    itemRows.push('<tr><td class="c-no"></td><td></td><td class="c-qty"></td><td class="c-price"></td><td class="c-amt"></td><td class="c-note"></td></tr>');
+  }
+  for (let i = 0; i < blanks.assets; i++) {
     assetRows.push('<tr><td class="c-no"></td><td class="c-code"></td><td></td><td class="c-val"></td></tr>');
   }
   const assetTotal = (pr.assets || []).reduce((s, a) => s + (Number(a.asset_value) || 0), 0);
