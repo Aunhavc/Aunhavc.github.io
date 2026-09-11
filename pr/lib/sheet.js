@@ -14,8 +14,12 @@ export const EXEC_TITLE = {
   coo: 'ประธานเจ้าหน้าที่สายงานปฏิบัติการ'
 };
 
-const MIN_ITEM_ROWS  = 6;
-const MIN_ASSET_ROWS = 7;
+// ตารางรายการยาวตามของจริง แล้วเว้นบรรทัดว่างไว้เขียนเพิ่มด้วยมือ 3 บรรทัด
+// ไม่ตรึงไว้ที่ 6 แถวเหมือนฟอร์มกระดาษ — ใบที่มีรายการเดียวจะได้ไม่ลากยาวโดยเปล่าประโยชน์
+const BLANK_ITEM_ROWS = 3;
+// เกิน 9 แถวใบจะไหลไปหน้าที่ 2 ถ้ารายการเยอะถึงขนาดนั้นให้ตัดบรรทัดว่างทิ้งก่อน
+const MAX_ITEM_ROWS   = 9;
+const MIN_ASSET_ROWS  = 7;
 
 /* ---------------- ตัวช่วยวาด ---------------- */
 
@@ -58,7 +62,9 @@ export function renderSheet(pr) {
         <td class="c-note fill">${esc(it.note || '')}</td>
       </tr>`);
   });
-  for (let i = itemRows.length; i < MIN_ITEM_ROWS; i++) {
+  const targetRows = Math.min(itemRows.length + BLANK_ITEM_ROWS,
+                              Math.max(itemRows.length, MAX_ITEM_ROWS));
+  for (let i = itemRows.length; i < targetRows; i++) {
     itemRows.push('<tr><td class="c-no"></td><td></td><td class="c-qty"></td><td class="c-price"></td><td class="c-amt"></td><td class="c-note"></td></tr>');
   }
 
