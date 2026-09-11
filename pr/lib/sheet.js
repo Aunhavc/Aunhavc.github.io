@@ -101,7 +101,10 @@ export function renderSheet(pr) {
     <!-- ============ หัวใบ ============ -->
     <div class="hd">
       <div>
-        <div class="logo">สมใจ</div>
+        ${cfg.LOGO_SRC
+          ? `<img class="logo-img" src="${esc(cfg.LOGO_SRC)}" alt="สมใจ"
+                 onerror="this.outerHTML='<div class=\\'logo\\'>สมใจ</div>'">`
+          : '<div class="logo">สมใจ</div>'}
         <div class="co">${esc(cfg.COMPANY_NAME || '')}</div>
         <div class="vend">
           ชื่อผู้ขายที่แนะนำ (ถ้ามี)

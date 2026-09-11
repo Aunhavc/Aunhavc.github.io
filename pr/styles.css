@@ -59,6 +59,7 @@ body{
   font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.06em;
   background:var(--leaf);color:#fff;padding:3px 7px;border-radius:3px
 }
+.appbar .brand-logo{height:24px;width:auto;max-width:90px;object-fit:contain;display:block}
 .appbar nav{display:flex;gap:2px}
 .appbar nav a{
   color:var(--ink-2);text-decoration:none;font-size:14px;padding:6px 12px;border-radius:4px

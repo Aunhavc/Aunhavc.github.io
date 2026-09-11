@@ -168,7 +168,10 @@ export function appbar(profile, current) {
   if (can(profile, 'admin')) nav.push(['admin.html', 'ตั้งค่าระบบ']);
   return `
     <header class="appbar">
-      <a class="brand" href="index.html"><b>PR</b> ใบขอจัดซื้อ</a>
+      <a class="brand" href="index.html">${cfg.LOGO_SRC
+        ? `<img class="brand-logo" src="${esc(cfg.LOGO_SRC)}" alt="สมใจ"
+               onerror="this.outerHTML='<b>PR</b>'">`
+        : '<b>PR</b>'} ใบขอจัดซื้อ</a>
       <nav>${nav.map(([h, t]) =>
         `<a href="${h}"${h === current ? ' aria-current="page"' : ''}>${esc(t)}</a>`).join('')}</nav>
       <span class="grow"></span>
